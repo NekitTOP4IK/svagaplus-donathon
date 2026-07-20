@@ -1,4 +1,5 @@
 import 'service_config.dart';
+import 'svagaplus_settings.dart';
 
 /// Настройки приложения включая конфигурации сервисов.
 class AppSettings {
@@ -17,6 +18,9 @@ class AppSettings {
   final bool isSubtractionMode;
   final bool enableCurrencyConversion;
   final String currencyConverterSource;
+  final SvagaPlusSettings svagaPlusSettings;
+
+  SvagaPlusSettings get svagaPlus => svagaPlusSettings;
 
   const AppSettings({
     this.minutesPerAmount = 600.0,
@@ -34,6 +38,7 @@ class AppSettings {
     this.isSubtractionMode = false,
     this.enableCurrencyConversion = false,
     this.currencyConverterSource = 'cbr-xml',
+    this.svagaPlusSettings = const SvagaPlusSettings(),
   });
 
   /// Creates a copy with updated values.
@@ -53,6 +58,7 @@ class AppSettings {
     bool? isSubtractionMode,
     bool? enableCurrencyConversion,
     String? currencyConverterSource,
+    SvagaPlusSettings? svagaPlusSettings,
   }) {
     return AppSettings(
       minutesPerAmount: minutesPerAmount ?? this.minutesPerAmount,
@@ -68,8 +74,11 @@ class AppSettings {
       isFixedTimeMode: isFixedTimeMode ?? this.isFixedTimeMode,
       fixedTimeMinutes: fixedTimeMinutes ?? this.fixedTimeMinutes,
       isSubtractionMode: isSubtractionMode ?? this.isSubtractionMode,
-      enableCurrencyConversion: enableCurrencyConversion ?? this.enableCurrencyConversion,
-      currencyConverterSource: currencyConverterSource ?? this.currencyConverterSource,
+      enableCurrencyConversion:
+          enableCurrencyConversion ?? this.enableCurrencyConversion,
+      currencyConverterSource:
+          currencyConverterSource ?? this.currencyConverterSource,
+      svagaPlusSettings: svagaPlusSettings ?? this.svagaPlusSettings,
     );
   }
 
@@ -89,7 +98,7 @@ class AppSettings {
   factory AppSettings.fromJson(Map<String, dynamic> json) {
     final serviceConfigsJson = json['serviceConfigs'] as Map<String, dynamic>?;
     final serviceConfigs = <String, ServiceConfig>{};
-    
+
     if (serviceConfigsJson != null) {
       for (final entry in serviceConfigsJson.entries) {
         serviceConfigs[entry.key] = ServiceConfig.fromJson(
@@ -98,6 +107,7 @@ class AppSettings {
       }
     }
 
+    final svagaJson = json['svagaPlus'] ?? json['svagaPlusSettings'];
     return AppSettings(
       minutesPerAmount: (json['minutesPerAmount'] as num?)?.toDouble() ?? 600.0,
       timePerAmountMinutes: json['timePerAmountMinutes'] as int? ?? 60,
@@ -112,8 +122,13 @@ class AppSettings {
       isFixedTimeMode: json['isFixedTimeMode'] as bool? ?? false,
       fixedTimeMinutes: json['fixedTimeMinutes'] as int? ?? 1,
       isSubtractionMode: json['isSubtractionMode'] as bool? ?? false,
-      enableCurrencyConversion: json['enableCurrencyConversion'] as bool? ?? false,
-      currencyConverterSource: json['currencyConverterSource'] as String? ?? 'cbr-xml',
+      enableCurrencyConversion:
+          json['enableCurrencyConversion'] as bool? ?? false,
+      currencyConverterSource:
+          json['currencyConverterSource'] as String? ?? 'cbr-xml',
+      svagaPlusSettings: svagaJson is Map
+          ? SvagaPlusSettings.fromJson(Map<String, dynamic>.from(svagaJson))
+          : const SvagaPlusSettings(),
     );
   }
 
@@ -137,6 +152,7 @@ class AppSettings {
       'serviceConfigs': serviceConfigs.map(
         (key, value) => MapEntry(key, value.toJson()),
       ),
+      'svagaPlus': svagaPlusSettings.toJson(),
     };
   }
 

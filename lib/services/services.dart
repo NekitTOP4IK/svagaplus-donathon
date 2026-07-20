@@ -5,6 +5,11 @@ export 'donation_service.dart';
 export 'style_generator_service.dart';
 export 'sound_service.dart';
 export 'log_manager.dart';
+export 'svagaplus_api_client.dart';
+export 'svagaplus_adapter.dart';
+export 'svagaplus_event_processor.dart';
+export 'svagaplus_credential_store.dart';
+export 'svagaplus_socket_client.dart';
 
 // Donation service adapters
 export 'donation_service_adapter.dart';

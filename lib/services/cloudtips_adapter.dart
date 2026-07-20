@@ -85,7 +85,9 @@ class CloudTipsAdapter extends BaseDonationServiceAdapter {
       return;
     }
 
-    LogManager.info('CloudTips: токен ${_maskToken(_linkToken)}, инициализация...');
+    LogManager.info(
+      'CloudTips: токен ${_maskToken(_linkToken)}, инициализация...',
+    );
     updateStatus(ConnectionStatus.connecting);
     await _initConnection();
   }
@@ -113,10 +115,13 @@ class CloudTipsAdapter extends BaseDonationServiceAdapter {
         throw Exception('connectionToken not found in response');
       }
 
-      LogManager.info('CloudTips: connectionToken получен (${_maskToken(_connectionToken)}), подключение к WS...');
+      LogManager.info(
+        'CloudTips: connectionToken получен (${_maskToken(_connectionToken)}), подключение к WS...',
+      );
 
       // 2. Подключаемся к WebSocket
-      final wsUrl = '$_wsBase/notification/socket?connectionToken=${Uri.encodeComponent(_connectionToken!)}';
+      final wsUrl =
+          '$_wsBase/notification/socket?connectionToken=${Uri.encodeComponent(_connectionToken!)}';
       _webSocket = await WebSocket.connect(wsUrl);
 
       LogManager.info('CloudTips: WebSocket подключён, отправка handshake...');
@@ -124,7 +129,9 @@ class CloudTipsAdapter extends BaseDonationServiceAdapter {
       _reconnectAttempts = 0;
 
       // 3. SignalR handshake
-      _webSocket!.add('${json.encode({"protocol": "json", "version": 1})}$_signalrTerminator');
+      _webSocket!.add(
+        '${json.encode({"protocol": "json", "version": 1})}$_signalrTerminator',
+      );
 
       // 4. Слушаем входящие сообщения
       _webSocket!.listen(
@@ -211,7 +218,9 @@ class CloudTipsAdapter extends BaseDonationServiceAdapter {
       final username = _extractUsernameFromTitle(title);
 
       final comment = payload['comment'] as String?;
-      final id = payload['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString();
+      final id =
+          payload['id'] as String? ??
+          DateTime.now().millisecondsSinceEpoch.toString();
 
       final donation = Donation(
         id: '${serviceName}_$id',
@@ -278,7 +287,9 @@ class CloudTipsAdapter extends BaseDonationServiceAdapter {
     final delay = _reconnectDelay * (_reconnectAttempts + 1);
     _reconnectTimer = Timer(delay, () {
       _reconnectAttempts++;
-      LogManager.info('CloudTips: попытка переподключения #$_reconnectAttempts...');
+      LogManager.info(
+        'CloudTips: попытка переподключения #$_reconnectAttempts...',
+      );
       updateStatus(ConnectionStatus.reconnecting);
       _initConnection();
     });

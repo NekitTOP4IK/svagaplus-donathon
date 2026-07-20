@@ -148,14 +148,16 @@ class TimerStyle {
       marginRight: marginRight ?? this.marginRight,
       animationType: animationType ?? this.animationType,
       animationDuration: animationDuration ?? this.animationDuration,
-      animationTimingFunction: animationTimingFunction ?? this.animationTimingFunction,
+      animationTimingFunction:
+          animationTimingFunction ?? this.animationTimingFunction,
       letterSpacing: letterSpacing ?? this.letterSpacing,
       hoursColor: hoursColor ?? this.hoursColor,
       minutesColor: minutesColor ?? this.minutesColor,
       secondsColor: secondsColor ?? this.secondsColor,
       separatorColor: separatorColor ?? this.separatorColor,
       separatorAnimation: separatorAnimation ?? this.separatorAnimation,
-      separatorAnimationDuration: separatorAnimationDuration ?? this.separatorAnimationDuration,
+      separatorAnimationDuration:
+          separatorAnimationDuration ?? this.separatorAnimationDuration,
     );
   }
 
@@ -166,10 +168,14 @@ class TimerStyle {
       previewImage: json['previewImage'] as String?,
       fontSize: (json['fontSize'] as num?)?.toDouble() ?? 72,
       textColor: _colorFromHex(json['textColor'] as String? ?? '#FFFFFF'),
-      backgroundColor: _colorFromHex(json['backgroundColor'] as String? ?? '#000000'),
+      backgroundColor: _colorFromHex(
+        json['backgroundColor'] as String? ?? '#000000',
+      ),
       showBackground: json['showBackground'] as bool? ?? true,
       showTextShadow: json['showTextShadow'] as bool? ?? true,
-      textShadowColor: _colorFromHex(json['textShadowColor'] as String? ?? '#000000'),
+      textShadowColor: _colorFromHex(
+        json['textShadowColor'] as String? ?? '#000000',
+      ),
       textShadowOffsetX: (json['textShadowOffsetX'] as num?)?.toDouble() ?? 2,
       textShadowOffsetY: (json['textShadowOffsetY'] as num?)?.toDouble() ?? 2,
       textShadowBlur: (json['textShadowBlur'] as num?)?.toDouble() ?? 4,
@@ -190,14 +196,24 @@ class TimerStyle {
       marginRight: (json['marginRight'] as num?)?.toDouble() ?? 0,
       animationType: json['animationType'] as String? ?? 'none',
       animationDuration: (json['animationDuration'] as num?)?.toDouble() ?? 2.0,
-      animationTimingFunction: json['animationTimingFunction'] as String? ?? 'ease-in-out',
+      animationTimingFunction:
+          json['animationTimingFunction'] as String? ?? 'ease-in-out',
       letterSpacing: (json['letterSpacing'] as num?)?.toDouble() ?? 2,
-      hoursColor: json['hoursColor'] != null ? _colorFromHex(json['hoursColor'] as String) : null,
-      minutesColor: json['minutesColor'] != null ? _colorFromHex(json['minutesColor'] as String) : null,
-      secondsColor: json['secondsColor'] != null ? _colorFromHex(json['secondsColor'] as String) : null,
-      separatorColor: json['separatorColor'] != null ? _colorFromHex(json['separatorColor'] as String) : null,
+      hoursColor: json['hoursColor'] != null
+          ? _colorFromHex(json['hoursColor'] as String)
+          : null,
+      minutesColor: json['minutesColor'] != null
+          ? _colorFromHex(json['minutesColor'] as String)
+          : null,
+      secondsColor: json['secondsColor'] != null
+          ? _colorFromHex(json['secondsColor'] as String)
+          : null,
+      separatorColor: json['separatorColor'] != null
+          ? _colorFromHex(json['separatorColor'] as String)
+          : null,
       separatorAnimation: json['separatorAnimation'] as String? ?? 'none',
-      separatorAnimationDuration: (json['separatorAnimationDuration'] as num?)?.toDouble() ?? 1.0,
+      separatorAnimationDuration:
+          (json['separatorAnimationDuration'] as num?)?.toDouble() ?? 1.0,
     );
   }
 
@@ -237,7 +253,9 @@ class TimerStyle {
       'hoursColor': hoursColor != null ? _colorToHex(hoursColor!) : null,
       'minutesColor': minutesColor != null ? _colorToHex(minutesColor!) : null,
       'secondsColor': secondsColor != null ? _colorToHex(secondsColor!) : null,
-      'separatorColor': separatorColor != null ? _colorToHex(separatorColor!) : null,
+      'separatorColor': separatorColor != null
+          ? _colorToHex(separatorColor!)
+          : null,
       'separatorAnimation': separatorAnimation,
       'separatorAnimationDuration': separatorAnimationDuration,
     };

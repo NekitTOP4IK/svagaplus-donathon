@@ -40,17 +40,11 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Left panel - Settings
-                  Expanded(
-                    flex: 3,
-                    child: _buildSettingsPanel(localization),
-                  ),
+                  Expanded(flex: 3, child: _buildSettingsPanel(localization)),
                   const SizedBox(width: 16),
 
                   // Right panel - Preview & CSS
-                  Expanded(
-                    flex: 2,
-                    child: _buildPreviewPanel(localization),
-                  ),
+                  Expanded(flex: 2, child: _buildPreviewPanel(localization)),
                 ],
               ),
             ),
@@ -76,7 +70,6 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
       ],
     );
   }
-
 
   Widget _buildSettingsPanel(LocalizationProvider localization) {
     return SingleChildScrollView(
@@ -127,38 +120,100 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Inner padding (container)
-            Text(localization.tr('inner_padding'), style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              localization.tr('inner_padding'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 4),
             Row(
               children: [
-                Expanded(child: _buildCompactSlider('↑', _currentStyle.paddingTop, 50, (v) => _currentStyle.copyWith(paddingTop: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '↑',
+                    _currentStyle.paddingTop,
+                    50,
+                    (v) => _currentStyle.copyWith(paddingTop: v),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: _buildCompactSlider('↓', _currentStyle.paddingBottom, 50, (v) => _currentStyle.copyWith(paddingBottom: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '↓',
+                    _currentStyle.paddingBottom,
+                    50,
+                    (v) => _currentStyle.copyWith(paddingBottom: v),
+                  ),
+                ),
               ],
             ),
             Row(
               children: [
-                Expanded(child: _buildCompactSlider('←', _currentStyle.paddingLeft, 50, (v) => _currentStyle.copyWith(paddingLeft: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '←',
+                    _currentStyle.paddingLeft,
+                    50,
+                    (v) => _currentStyle.copyWith(paddingLeft: v),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: _buildCompactSlider('→', _currentStyle.paddingRight, 50, (v) => _currentStyle.copyWith(paddingRight: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '→',
+                    _currentStyle.paddingRight,
+                    50,
+                    (v) => _currentStyle.copyWith(paddingRight: v),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             // Outer margin (page position)
-            Text(localization.tr('outer_margin'), style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              localization.tr('outer_margin'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 4),
             Row(
               children: [
-                Expanded(child: _buildCompactSlider('↑', _currentStyle.marginTop, 200, (v) => _currentStyle.copyWith(marginTop: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '↑',
+                    _currentStyle.marginTop,
+                    200,
+                    (v) => _currentStyle.copyWith(marginTop: v),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: _buildCompactSlider('↓', _currentStyle.marginBottom, 200, (v) => _currentStyle.copyWith(marginBottom: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '↓',
+                    _currentStyle.marginBottom,
+                    200,
+                    (v) => _currentStyle.copyWith(marginBottom: v),
+                  ),
+                ),
               ],
             ),
             Row(
               children: [
-                Expanded(child: _buildCompactSlider('←', _currentStyle.marginLeft, 200, (v) => _currentStyle.copyWith(marginLeft: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '←',
+                    _currentStyle.marginLeft,
+                    200,
+                    (v) => _currentStyle.copyWith(marginLeft: v),
+                  ),
+                ),
                 const SizedBox(width: 8),
-                Expanded(child: _buildCompactSlider('→', _currentStyle.marginRight, 200, (v) => _currentStyle.copyWith(marginRight: v))),
+                Expanded(
+                  child: _buildCompactSlider(
+                    '→',
+                    _currentStyle.marginRight,
+                    200,
+                    (v) => _currentStyle.copyWith(marginRight: v),
+                  ),
+                ),
               ],
             ),
           ],
@@ -167,10 +222,18 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
     );
   }
 
-  Widget _buildCompactSlider(String label, double value, double max, TimerStyle Function(double) updater) {
+  Widget _buildCompactSlider(
+    String label,
+    double value,
+    double max,
+    TimerStyle Function(double) updater,
+  ) {
     return Row(
       children: [
-        SizedBox(width: 16, child: Text(label, style: const TextStyle(fontSize: 12))),
+        SizedBox(
+          width: 16,
+          child: Text(label, style: const TextStyle(fontSize: 12)),
+        ),
         Expanded(
           child: Slider(
             value: value,
@@ -185,7 +248,10 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
             },
           ),
         ),
-        SizedBox(width: 28, child: Text('${value.toInt()}', style: const TextStyle(fontSize: 11))),
+        SizedBox(
+          width: 28,
+          child: Text('${value.toInt()}', style: const TextStyle(fontSize: 11)),
+        ),
       ],
     );
   }
@@ -213,7 +279,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(animationType: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      animationType: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 }
@@ -224,7 +292,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               const SizedBox(height: 16),
 
               // Animation duration
-              Text('${localization.tr('animation_duration')}: ${_currentStyle.animationDuration.toStringAsFixed(1)}s'),
+              Text(
+                '${localization.tr('animation_duration')}: ${_currentStyle.animationDuration.toStringAsFixed(1)}s',
+              ),
               Slider(
                 value: _currentStyle.animationDuration,
                 min: 0.5,
@@ -232,7 +302,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 divisions: 18,
                 onChanged: (value) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(animationDuration: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      animationDuration: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
@@ -245,16 +317,17 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               DropdownButton<String>(
                 value: _currentStyle.animationTimingFunction,
                 isExpanded: true,
-                items: StyleGeneratorService.animationTimingFunctions.map((func) {
-                  return DropdownMenuItem(
-                    value: func,
-                    child: Text(func),
-                  );
+                items: StyleGeneratorService.animationTimingFunctions.map((
+                  func,
+                ) {
+                  return DropdownMenuItem(value: func, child: Text(func));
                 }).toList(),
                 onChanged: (value) {
                   if (value != null) {
                     setState(() {
-                      _currentStyle = _currentStyle.copyWith(animationTimingFunction: value);
+                      _currentStyle = _currentStyle.copyWith(
+                        animationTimingFunction: value,
+                      );
                       _selectedPresetIndex = -1;
                     });
                   }
@@ -281,7 +354,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               onChanged: (value) {
                 if (value != null) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(separatorAnimation: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      separatorAnimation: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 }
@@ -290,7 +365,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
 
             if (_currentStyle.separatorAnimation != 'none') ...[
               const SizedBox(height: 16),
-              Text('${localization.tr('separator_animation_duration')}: ${_currentStyle.separatorAnimationDuration.toStringAsFixed(1)}s'),
+              Text(
+                '${localization.tr('separator_animation_duration')}: ${_currentStyle.separatorAnimationDuration.toStringAsFixed(1)}s',
+              ),
               Slider(
                 value: _currentStyle.separatorAnimationDuration,
                 min: 0.5,
@@ -298,7 +375,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 divisions: 10,
                 onChanged: (value) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(separatorAnimationDuration: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      separatorAnimationDuration: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
@@ -353,10 +432,7 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               value: _currentStyle.fontFamily,
               isExpanded: true,
               items: StyleGeneratorService.availableFonts.map((font) {
-                return DropdownMenuItem(
-                  value: font,
-                  child: Text(font),
-                );
+                return DropdownMenuItem(value: font, child: Text(font));
               }).toList(),
               onChanged: (value) {
                 if (value != null) {
@@ -370,7 +446,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
             const SizedBox(height: 16),
 
             // Font size slider
-            Text('${localization.tr('font_size')}: ${_currentStyle.fontSize.toInt()}px'),
+            Text(
+              '${localization.tr('font_size')}: ${_currentStyle.fontSize.toInt()}px',
+            ),
             Slider(
               value: _currentStyle.fontSize,
               min: 24,
@@ -386,7 +464,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
             const SizedBox(height: 8),
 
             // Letter spacing slider
-            Text('${localization.tr('letter_spacing')}: ${_currentStyle.letterSpacing.toInt()}px'),
+            Text(
+              '${localization.tr('letter_spacing')}: ${_currentStyle.letterSpacing.toInt()}px',
+            ),
             Slider(
               value: _currentStyle.letterSpacing,
               min: 0,
@@ -479,7 +559,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Width slider
-            Text('${localization.tr('width')}: ${_currentStyle.width.toInt()}px'),
+            Text(
+              '${localization.tr('width')}: ${_currentStyle.width.toInt()}px',
+            ),
             Slider(
               value: _currentStyle.width,
               min: 200,
@@ -495,7 +577,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
             const SizedBox(height: 8),
 
             // Height slider
-            Text('${localization.tr('height')}: ${_currentStyle.height.toInt()}px'),
+            Text(
+              '${localization.tr('height')}: ${_currentStyle.height.toInt()}px',
+            ),
             Slider(
               value: _currentStyle.height,
               min: 50,
@@ -514,7 +598,6 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
     );
   }
 
-
   Widget _buildBackgroundSection(LocalizationProvider localization) {
     return NesContainer(
       label: localization.tr('background'),
@@ -530,7 +613,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                   value: _currentStyle.showBackground,
                   onChange: (value) {
                     setState(() {
-                      _currentStyle = _currentStyle.copyWith(showBackground: value);
+                      _currentStyle = _currentStyle.copyWith(
+                        showBackground: value,
+                      );
                       _selectedPresetIndex = -1;
                     });
                   },
@@ -546,7 +631,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 _currentStyle.backgroundColor,
                 (color) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(backgroundColor: color);
+                    _currentStyle = _currentStyle.copyWith(
+                      backgroundColor: color,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
@@ -573,7 +660,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                   value: _currentStyle.showTextShadow,
                   onChange: (value) {
                     setState(() {
-                      _currentStyle = _currentStyle.copyWith(showTextShadow: value);
+                      _currentStyle = _currentStyle.copyWith(
+                        showTextShadow: value,
+                      );
                       _selectedPresetIndex = -1;
                     });
                   },
@@ -589,7 +678,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 _currentStyle.textShadowColor,
                 (color) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(textShadowColor: color);
+                    _currentStyle = _currentStyle.copyWith(
+                      textShadowColor: color,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
@@ -597,7 +688,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               const SizedBox(height: 12),
 
               // Shadow offset X
-              Text('${localization.tr('shadow_offset_x')}: ${_currentStyle.textShadowOffsetX.toInt()}px'),
+              Text(
+                '${localization.tr('shadow_offset_x')}: ${_currentStyle.textShadowOffsetX.toInt()}px',
+              ),
               Slider(
                 value: _currentStyle.textShadowOffsetX,
                 min: -20,
@@ -605,14 +698,18 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 divisions: 40,
                 onChanged: (value) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(textShadowOffsetX: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      textShadowOffsetX: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
               ),
 
               // Shadow offset Y
-              Text('${localization.tr('shadow_offset_y')}: ${_currentStyle.textShadowOffsetY.toInt()}px'),
+              Text(
+                '${localization.tr('shadow_offset_y')}: ${_currentStyle.textShadowOffsetY.toInt()}px',
+              ),
               Slider(
                 value: _currentStyle.textShadowOffsetY,
                 min: -20,
@@ -620,7 +717,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 divisions: 40,
                 onChanged: (value) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(textShadowOffsetY: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      textShadowOffsetY: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
@@ -635,7 +734,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
                 divisions: 50,
                 onChanged: (value) {
                   setState(() {
-                    _currentStyle = _currentStyle.copyWith(textShadowBlur: value);
+                    _currentStyle = _currentStyle.copyWith(
+                      textShadowBlur: value,
+                    );
                     _selectedPresetIndex = -1;
                   });
                 },
@@ -686,7 +787,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               const SizedBox(height: 12),
 
               // Border width
-              Text('${localization.tr('border_width')}: ${_currentStyle.borderWidth.toInt()}px'),
+              Text(
+                '${localization.tr('border_width')}: ${_currentStyle.borderWidth.toInt()}px',
+              ),
               Slider(
                 value: _currentStyle.borderWidth,
                 min: 1,
@@ -701,7 +804,9 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
               ),
 
               // Border radius
-              Text('${localization.tr('border_radius')}: ${_currentStyle.borderRadius.toInt()}px'),
+              Text(
+                '${localization.tr('border_radius')}: ${_currentStyle.borderRadius.toInt()}px',
+              ),
               Slider(
                 value: _currentStyle.borderRadius,
                 min: 0,
@@ -721,7 +826,6 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
     );
   }
 
-
   Widget _buildPreviewPanel(LocalizationProvider localization) {
     final css = StyleGeneratorService.generateCSS(_currentStyle);
 
@@ -734,9 +838,7 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
           child: Container(
             height: 200,
             color: Colors.grey[900],
-            child: Center(
-              child: _buildTimerPreview(),
-            ),
+            child: Center(child: _buildTimerPreview()),
           ),
         ),
         const SizedBox(height: 16),
@@ -780,7 +882,8 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
     final hoursColor = _currentStyle.hoursColor ?? _currentStyle.textColor;
     final minutesColor = _currentStyle.minutesColor ?? _currentStyle.textColor;
     final secondsColor = _currentStyle.secondsColor ?? _currentStyle.textColor;
-    final separatorColor = _currentStyle.separatorColor ?? _currentStyle.textColor;
+    final separatorColor =
+        _currentStyle.separatorColor ?? _currentStyle.textColor;
 
     final baseStyle = TextStyle(
       fontSize: _currentStyle.fontSize,
@@ -800,7 +903,7 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
             ]
           : null,
     );
-    
+
     final textStyle = _getGoogleFontStyle(_currentStyle.fontFamily, baseStyle);
 
     return ClipRRect(
@@ -881,7 +984,11 @@ class _StyleGeneratorScreenState extends State<StyleGeneratorScreen> {
     }
   }
 
-  Widget _buildColorRow(String label, Color color, ValueChanged<Color> onChanged) {
+  Widget _buildColorRow(
+    String label,
+    Color color,
+    ValueChanged<Color> onChanged,
+  ) {
     return Row(
       children: [
         Text('$label: '),
@@ -954,7 +1061,8 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     _blue = widget.initialColor.blue.toDouble();
   }
 
-  Color get _currentColor => Color.fromARGB(255, _red.toInt(), _green.toInt(), _blue.toInt());
+  Color get _currentColor =>
+      Color.fromARGB(255, _red.toInt(), _green.toInt(), _blue.toInt());
 
   @override
   Widget build(BuildContext context) {
@@ -986,9 +1094,24 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
               const SizedBox(height: 16),
 
               // Red slider
-              _buildColorSlider('R', _red, Colors.red, (v) => setState(() => _red = v)),
-              _buildColorSlider('G', _green, Colors.green, (v) => setState(() => _green = v)),
-              _buildColorSlider('B', _blue, Colors.blue, (v) => setState(() => _blue = v)),
+              _buildColorSlider(
+                'R',
+                _red,
+                Colors.red,
+                (v) => setState(() => _red = v),
+              ),
+              _buildColorSlider(
+                'G',
+                _green,
+                Colors.green,
+                (v) => setState(() => _green = v),
+              ),
+              _buildColorSlider(
+                'B',
+                _blue,
+                Colors.blue,
+                (v) => setState(() => _blue = v),
+              ),
 
               const SizedBox(height: 16),
 
@@ -1038,7 +1161,12 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     );
   }
 
-  Widget _buildColorSlider(String label, double value, Color color, ValueChanged<double> onChanged) {
+  Widget _buildColorSlider(
+    String label,
+    double value,
+    Color color,
+    ValueChanged<double> onChanged,
+  ) {
     return Row(
       children: [
         SizedBox(width: 20, child: Text(label)),
@@ -1051,10 +1179,7 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
             onChanged: onChanged,
           ),
         ),
-        SizedBox(
-          width: 40,
-          child: Text(value.toInt().toString()),
-        ),
+        SizedBox(width: 40, child: Text(value.toInt().toString())),
       ],
     );
   }

@@ -5,7 +5,10 @@ import 'package:provider/provider.dart';
 
 import '../providers/localization_provider.dart';
 import '../providers/timer_provider.dart';
+import '../providers/svagaplus_provider.dart';
+import 'svagaplus_history_screen.dart';
 import '../services/donation_service.dart';
+import '../services/svagaplus_adapter.dart';
 import '../services/donation_service_adapter.dart';
 import '../services/sound_service.dart';
 import '../services/log_manager.dart';
@@ -164,7 +167,7 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
   bool _donattyEnabled = false;
   bool _donattyTokenVisible = false;
   String _donattyApiServer = 'api-014';
-  
+
   static const List<String> _donattyApiServers = [
     'api-014',
     'api',
@@ -192,12 +195,16 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
   // StreamerBot controllers
   final _sbWsUrlController = TextEditingController();
   bool _sbEnabled = false;
-  
+
   List<Map<String, dynamic>> _sbMappings = [];
   bool _sbIsAddingMapping = false;
   final _sbSourceController = TextEditingController();
   final _sbTypeController = TextEditingController();
   final _sbAmountController = TextEditingController();
+
+  final _svagaNewMinutesController = TextEditingController();
+  final _svagaRenewedMinutesController = TextEditingController();
+  bool _svagaEnabled = false;
 
   // Available socket servers for DonationAlerts
   static const List<String> _socketServers = [
@@ -216,6 +223,15 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
   }
 
   void _loadSettings() {
+    final svagaProvider = context.read<SvagaPlusProvider?>();
+    if (svagaProvider != null) {
+      _svagaEnabled = svagaProvider.settings.enabled;
+      _svagaNewMinutesController.text =
+          '${svagaProvider.settings.newSubscriptionSeconds ~/ 60}';
+      _svagaRenewedMinutesController.text =
+          '${svagaProvider.settings.renewedSubscriptionSeconds ~/ 60}';
+    }
+
     final donationService = context.read<DonationService?>();
     if (donationService == null) return;
 
@@ -270,12 +286,15 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
     final sbConfig = settings.getServiceConfig('StreamerBot');
     if (sbConfig != null) {
       _sbEnabled = sbConfig.enabled;
-      _sbWsUrlController.text = sbConfig.getCredential('wsUrl') ?? 'ws://127.0.0.1:8080/';
+      _sbWsUrlController.text =
+          sbConfig.getCredential('wsUrl') ?? 'ws://127.0.0.1:8080/';
       final mappingsStr = sbConfig.getCredential('mappings');
       if (mappingsStr != null && mappingsStr.isNotEmpty) {
         try {
           final parsed = json.decode(mappingsStr) as List;
-          _sbMappings = parsed.map((e) => Map<String, dynamic>.from(e)).toList();
+          _sbMappings = parsed
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
         } catch (_) {
           _sbMappings = [];
         }
@@ -303,6 +322,8 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
     _sbSourceController.dispose();
     _sbTypeController.dispose();
     _sbAmountController.dispose();
+    _svagaNewMinutesController.dispose();
+    _svagaRenewedMinutesController.dispose();
     super.dispose();
   }
 
@@ -357,7 +378,6 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
         tooltip = 'Ошибка';
         break;
       case ConnectionStatus.disconnected:
-      default:
         color = Colors.grey;
         tooltip = 'Отключено';
     }
@@ -416,6 +436,10 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
 
           // CloudTips
           _buildCloudTipsSection(localization),
+          const SizedBox(height: 16),
+
+          // SVAGA+
+          _buildSvagaPlusSection(localization),
           const SizedBox(height: 16),
 
           // StreamerBot
@@ -835,7 +859,8 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
               controller: _donattyTokenController,
               obscureText: !_donattyTokenVisible,
               decoration: InputDecoration(
-                hintText: 'https://widgets.donatty.com/group/?ref=...&token=...',
+                hintText:
+                    'https://widgets.donatty.com/group/?ref=...&token=...',
                 border: const OutlineInputBorder(),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -843,15 +868,18 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                 ),
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _donattyTokenVisible ? Icons.visibility_off : Icons.visibility,
+                    _donattyTokenVisible
+                        ? Icons.visibility_off
+                        : Icons.visibility,
                   ),
-                  onPressed: () =>
-                      setState(() => _donattyTokenVisible = !_donattyTokenVisible),
+                  onPressed: () => setState(
+                    () => _donattyTokenVisible = !_donattyTokenVisible,
+                  ),
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            
+
             // API server dropdown
             Text('${localization.tr('api_server')}:'),
             const SizedBox(height: 8),
@@ -876,7 +904,7 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
               style: const TextStyle(fontSize: 10, color: Colors.grey),
             ),
             const SizedBox(height: 16),
-            
+
             NesButton.text(
               type: NesButtonType.success,
               text: localization.tr('save'),
@@ -951,6 +979,155 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
               onPressed: () => _saveServiceConfig('CloudTips', _ctEnabled, {
                 'token': _ctTokenController.text.trim(),
               }),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSvagaPlusSection(LocalizationProvider localization) {
+    final provider = context.watch<SvagaPlusProvider?>();
+    final currentStatus = provider?.status ?? SvagaPlusStatus.disconnected;
+    final statusKey = switch (currentStatus) {
+      SvagaPlusStatus.connected => 'connected',
+      SvagaPlusStatus.connecting ||
+      SvagaPlusStatus.syncing ||
+      SvagaPlusStatus.reconnecting => 'connecting',
+      SvagaPlusStatus.authorizationRequired =>
+        'svagaplus_authorization_required',
+      SvagaPlusStatus.error => 'error',
+      SvagaPlusStatus.disconnected => 'disconnected',
+    };
+
+    Future<void> save() async {
+      if (provider == null) return;
+      final newMinutes = int.tryParse(_svagaNewMinutesController.text.trim());
+      final renewedMinutes = int.tryParse(
+        _svagaRenewedMinutesController.text.trim(),
+      );
+      if (newMinutes == null ||
+          renewedMinutes == null ||
+          newMinutes < 0 ||
+          renewedMinutes < 0 ||
+          newMinutes > 1440 ||
+          renewedMinutes > 1440) {
+        NesSnackbar.show(
+          context,
+          text: localization.tr('svagaplus_invalid_minutes'),
+          type: NesSnackbarType.error,
+        );
+        return;
+      }
+      await provider.updateSettings(
+        provider.settings.copyWith(
+          enabled: _svagaEnabled,
+          newSubscriptionSeconds: newMinutes * 60,
+          renewedSubscriptionSeconds: renewedMinutes * 60,
+        ),
+      );
+      if (mounted) {
+        NesSnackbar.show(
+          context,
+          text: localization.tr('settings_saved'),
+          type: NesSnackbarType.success,
+        );
+      }
+    }
+
+    return NesContainer(
+      label: localization.tr('svagaplus'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Image.asset(
+                  'assets/svagaplus.webp',
+                  width: 32,
+                  height: 32,
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.favorite, color: Colors.pink, size: 32),
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(localization.tr('svagaplus'))),
+                Text(localization.tr(statusKey)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                NesCheckBox(
+                  value: _svagaEnabled,
+                  onChange: (value) => setState(() => _svagaEnabled = value),
+                ),
+                const SizedBox(width: 10),
+                Text(localization.tr(_svagaEnabled ? 'enabled' : 'disabled')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(localization.tr('svagaplus_new_minutes')),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _svagaNewMinutesController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: '15',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(localization.tr('svagaplus_renewed_minutes')),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _svagaRenewedMinutesController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: '15',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                NesButton.text(
+                  type: NesButtonType.success,
+                  text: localization.tr('save'),
+                  onPressed: provider == null ? null : save,
+                ),
+                NesButton.text(
+                  type: NesButtonType.normal,
+                  text: localization.tr('svagaplus_pair'),
+                  onPressed: provider == null
+                      ? null
+                      : () => provider.startPairing(),
+                ),
+                NesButton.text(
+                  type: NesButtonType.normal,
+                  text: localization.tr('svagaplus_disconnect'),
+                  onPressed: provider == null ? null : () => provider.disable(),
+                ),
+                NesButton.text(
+                  type: NesButtonType.normal,
+                  text: localization.tr('svagaplus_reconnect'),
+                  onPressed: provider == null ? null : () => provider.connect(),
+                ),
+                NesButton.text(
+                  type: NesButtonType.normal,
+                  text: localization.tr('svagaplus_history'),
+                  onPressed: provider == null
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const SvagaPlusHistoryScreen(),
+                          ),
+                        ),
+                ),
+              ],
             ),
           ],
         ),
@@ -1054,7 +1231,10 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                       decoration: InputDecoration(
                         hintText: localization.tr('sb_source_hint'),
                         border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1063,7 +1243,10 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                       decoration: InputDecoration(
                         hintText: localization.tr('sb_type_hint'),
                         border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1072,7 +1255,10 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                       decoration: InputDecoration(
                         hintText: localization.tr('sb_amount_hint'),
                         border: const OutlineInputBorder(),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
                       ),
                       keyboardType: TextInputType.number,
                     ),
@@ -1083,15 +1269,19 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                         NesButton.text(
                           type: NesButtonType.normal,
                           text: localization.tr('sb_cancel'),
-                          onPressed: () => setState(() => _sbIsAddingMapping = false),
+                          onPressed: () =>
+                              setState(() => _sbIsAddingMapping = false),
                         ),
                         const SizedBox(width: 8),
                         NesButton.text(
                           type: NesButtonType.success,
                           text: 'ОК',
                           onPressed: () {
-                            final amount = double.tryParse(_sbAmountController.text) ?? 0.0;
-                            if (_sbSourceController.text.isNotEmpty && _sbTypeController.text.isNotEmpty) {
+                            final amount =
+                                double.tryParse(_sbAmountController.text) ??
+                                0.0;
+                            if (_sbSourceController.text.isNotEmpty &&
+                                _sbTypeController.text.isNotEmpty) {
                               setState(() {
                                 _sbMappings.add({
                                   'source': _sbSourceController.text.trim(),
@@ -1687,8 +1877,10 @@ class _DataSettingsTabState extends State<DataSettingsTab> {
     final donationService = context.read<DonationService?>();
     if (donationService != null) {
       _loggingEnabled = donationService.settings.loggingEnabled;
-      _enableCurrencyConversion = donationService.settings.enableCurrencyConversion;
-      _currencyConverterSource = donationService.settings.currencyConverterSource;
+      _enableCurrencyConversion =
+          donationService.settings.enableCurrencyConversion;
+      _currencyConverterSource =
+          donationService.settings.currencyConverterSource;
     }
     // Also sync with LogManager
     _loggingEnabled = LogManager.enabled;
@@ -1790,10 +1982,15 @@ class _DataSettingsTabState extends State<DataSettingsTab> {
                     children: [
                       NesCheckBox(
                         value: _enableCurrencyConversion,
-                        onChange: (value) => setState(() => _enableCurrencyConversion = value),
+                        onChange: (value) =>
+                            setState(() => _enableCurrencyConversion = value),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(child: Text(localization.tr('enable_currency_conversion'))),
+                      Expanded(
+                        child: Text(
+                          localization.tr('enable_currency_conversion'),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1808,11 +2005,26 @@ class _DataSettingsTabState extends State<DataSettingsTab> {
                     value: _currencyConverterSource,
                     isExpanded: true,
                     items: const [
-                      DropdownMenuItem(value: 'cbr-xml', child: Text('ЦБ РФ (XML, по умолчанию)')),
-                      DropdownMenuItem(value: 'cbr-json', child: Text('ЦБ РФ (JSON)')),
-                      DropdownMenuItem(value: 'ratata', child: Text('Ratata Money (ratata.money)')),
-                      DropdownMenuItem(value: 'er-api', child: Text('ER-API (open.er-api.com)')),
-                      DropdownMenuItem(value: 'frankfurter', child: Text('Frankfurter (api.frankfurter.app)')),
+                      DropdownMenuItem(
+                        value: 'cbr-xml',
+                        child: Text('ЦБ РФ (XML, по умолчанию)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cbr-json',
+                        child: Text('ЦБ РФ (JSON)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'ratata',
+                        child: Text('Ratata Money (ratata.money)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'er-api',
+                        child: Text('ER-API (open.er-api.com)'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'frankfurter',
+                        child: Text('Frankfurter (api.frankfurter.app)'),
+                      ),
                     ],
                     onChanged: (value) {
                       if (value != null) {

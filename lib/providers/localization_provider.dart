@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 class LocalizationProvider extends ChangeNotifier {
   static const String _defaultLanguage = 'ru';
   static const List<String> supportedLanguages = ['ru', 'en'];
-  
+
   static LocalizationProvider? _instance;
 
   String _currentLanguage = _defaultLanguage;
@@ -34,7 +34,7 @@ class LocalizationProvider extends ChangeNotifier {
     try {
       final jsonString = await rootBundle.loadString('lang/$languageCode.json');
       final Map<String, dynamic> jsonMap = json.decode(jsonString);
-      
+
       _localizedStrings = jsonMap.map(
         (key, value) => MapEntry(key, value.toString()),
       );

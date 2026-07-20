@@ -40,34 +40,36 @@ abstract class DonationServiceAdapter {
 
 /// Базовая реализация адаптера донат-сервиса.
 abstract class BaseDonationServiceAdapter implements DonationServiceAdapter {
-  final StreamController<Donation> _donationController = StreamController<Donation>.broadcast();
-  final StreamController<ConnectionStatus> _statusController = StreamController<ConnectionStatus>.broadcast();
-  
+  final StreamController<Donation> _donationController =
+      StreamController<Donation>.broadcast();
+  final StreamController<ConnectionStatus> _statusController =
+      StreamController<ConnectionStatus>.broadcast();
+
   ConnectionStatus _status = ConnectionStatus.disconnected;
-  
+
   @override
   ConnectionStatus get status => _status;
-  
+
   @override
   bool get isConnected => _status == ConnectionStatus.connected;
-  
+
   @override
   Stream<Donation> get donationStream => _donationController.stream;
-  
+
   @override
   Stream<ConnectionStatus> get statusStream => _statusController.stream;
-  
+
   /// Updates the connection status and notifies listeners.
   void updateStatus(ConnectionStatus newStatus) {
     _status = newStatus;
     _statusController.add(newStatus);
   }
-  
+
   /// Emits a donation to the stream.
   void emitDonation(Donation donation) {
     _donationController.add(donation);
   }
-  
+
   @override
   Future<void> dispose() async {
     await disconnect();

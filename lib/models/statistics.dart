@@ -32,10 +32,7 @@ class Statistics {
     newTopDonators[record.username] =
         (newTopDonators[record.username] ?? 0) + record.minutesAdded;
 
-    return Statistics(
-      recentDonations: newRecent,
-      topDonators: newTopDonators,
-    );
+    return Statistics(recentDonations: newRecent, topDonators: newTopDonators);
   }
 
   /// Gets sorted top donators list.
@@ -48,7 +45,8 @@ class Statistics {
   /// Creates Statistics from a JSON map.
   factory Statistics.fromJson(Map<String, dynamic> json) {
     return Statistics(
-      recentDonations: (json['recentDonations'] as List?)
+      recentDonations:
+          (json['recentDonations'] as List?)
               ?.map((e) => DonationRecord.fromJson(e as Map<String, dynamic>))
               .toList() ??
           [],

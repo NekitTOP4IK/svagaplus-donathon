@@ -16,46 +16,46 @@ class WebServerService extends ChangeNotifier {
   HttpServer? _httpServer;
   HttpServer? _wsServer;
   final List<WebSocketChannel> _clients = [];
-  
+
   int _httpPort;
   int _wsPort;
   String _localIpAddress = 'localhost';
-  
+
   bool _isHttpRunning = false;
   bool _isWsRunning = false;
-  
+
   // Callbacks for handling WebSocket commands
   Function()? onStartTimer;
   Function()? onStopTimer;
   Function(int seconds)? onChangeTime;
-  
+
   // Current timer state for broadcasting
   int _currentDuration = 0;
   List<Map<String, dynamic>> _recentDonations = [];
   Map<String, int> _topDonators = {};
   bool hasOldPortsWarning = false;
-  
-  WebServerService({
-    int httpPort = 7575,
-    int wsPort = 3434,
-  }) : _httpPort = httpPort,
-       _wsPort = wsPort;
-  
+
+  WebServerService({int httpPort = 7575, int wsPort = 3434})
+    : _httpPort = httpPort,
+      _wsPort = wsPort;
+
   int get httpPort => _httpPort;
   int get wsPort => _wsPort;
   String get localIpAddress => _localIpAddress;
   bool get isHttpRunning => _isHttpRunning;
   bool get isWsRunning => _isWsRunning;
   int get clientCount => _clients.length;
-  
+
   /// Инициализирует сервис и запускает оба сервера.
   Future<void> init() async {
     await _getLocalIpAddress();
-    
+
     try {
       await startHttpServer(_httpPort);
     } catch (e) {
-      LogManager.warning('WebServerService: Не удалось запустить HTTP на $_httpPort');
+      LogManager.warning(
+        'WebServerService: Не удалось запустить HTTP на $_httpPort',
+      );
       if (_httpPort == 7575) {
         try {
           LogManager.info('WebServerService: Пробуем порт 7576...');
@@ -63,11 +63,13 @@ class WebServerService extends ChangeNotifier {
         } catch (_) {}
       }
     }
-    
+
     try {
       await startWebSocketServer(_wsPort);
     } catch (e) {
-      LogManager.warning('WebServerService: Не удалось запустить WS на $_wsPort');
+      LogManager.warning(
+        'WebServerService: Не удалось запустить WS на $_wsPort',
+      );
       if (_wsPort == 3434) {
         try {
           LogManager.info('WebServerService: Пробуем порт 3435...');
@@ -76,7 +78,7 @@ class WebServerService extends ChangeNotifier {
       }
     }
   }
-  
+
   /// Получает локальный IP адрес.
   Future<void> _getLocalIpAddress() async {
     try {
@@ -89,36 +91,36 @@ class WebServerService extends ChangeNotifier {
       debugPrint('WebServerService: Failed to get IP, using localhost: $e');
     }
   }
-  
+
   /// Запускает HTTP сервер на указанном порту.
   Future<void> startHttpServer(int port) async {
     try {
       await stopHttpServer();
-      
+
       final router = Router();
-      
+
       // Timer page for OBS Browser Source
       router.get('/timer', _handleTimerPage);
-      
+
       // Dashboard for mobile/browser control
       router.get('/dashboard', _handleDashboardPage);
-      
+
       // Mini version for OBS dock panel
       router.get('/mini', _handleMiniPage);
-      
+
       // Root redirects to dashboard
       router.get('/', (Request request) {
         return Response.found('/dashboard');
       });
-      
+
       final handler = const Pipeline()
           .addMiddleware(_corsMiddleware())
           .addHandler(router.call);
-      
+
       _httpServer = await shelf_io.serve(handler, '0.0.0.0', port);
       _httpPort = port;
       _isHttpRunning = true;
-      
+
       LogManager.info('HTTP сервер запущен на порту $port');
       notifyListeners();
     } catch (e) {
@@ -128,45 +130,49 @@ class WebServerService extends ChangeNotifier {
       rethrow;
     }
   }
-  
+
   /// Запускает WebSocket сервер на указанном порту.
   Future<void> startWebSocketServer(int port) async {
     try {
       await stopWebSocketServer();
-      
+
       _wsServer = await HttpServer.bind('0.0.0.0', port);
       _wsPort = port;
       _isWsRunning = true;
-      
+
       LogManager.info('WebSocket сервер запущен на порту $port');
       notifyListeners();
-      
+
       _wsServer!.listen((HttpRequest request) {
         if (request.uri.path == '/' || request.uri.path.isEmpty) {
-          WebSocketTransformer.upgrade(request).then((WebSocket socket) {
-            final channel = IOWebSocketChannel(socket);
-            _clients.add(channel);
-            notifyListeners();
-            
-            // Send current state to new client
-            _sendCurrentState(channel);
-            
-            // Listen for messages from client
-            channel.stream.listen(
-              (message) => _handleWebSocketMessage(message),
-              onDone: () {
-                _clients.remove(channel);
+          WebSocketTransformer.upgrade(request)
+              .then((WebSocket socket) {
+                final channel = IOWebSocketChannel(socket);
+                _clients.add(channel);
                 notifyListeners();
-              },
-              onError: (error) {
-                debugPrint('WebServerService: WebSocket error: $error');
-                _clients.remove(channel);
-                notifyListeners();
-              },
-            );
-          }).catchError((error) {
-            debugPrint('WebServerService: WebSocket upgrade failed: $error');
-          });
+
+                // Send current state to new client
+                _sendCurrentState(channel);
+
+                // Listen for messages from client
+                channel.stream.listen(
+                  (message) => _handleWebSocketMessage(message),
+                  onDone: () {
+                    _clients.remove(channel);
+                    notifyListeners();
+                  },
+                  onError: (error) {
+                    debugPrint('WebServerService: WebSocket error: $error');
+                    _clients.remove(channel);
+                    notifyListeners();
+                  },
+                );
+              })
+              .catchError((error) {
+                debugPrint(
+                  'WebServerService: WebSocket upgrade failed: $error',
+                );
+              });
         }
       });
     } catch (e) {
@@ -176,7 +182,7 @@ class WebServerService extends ChangeNotifier {
       rethrow;
     }
   }
-  
+
   /// Останавливает HTTP сервер.
   Future<void> stopHttpServer() async {
     if (_httpServer != null) {
@@ -187,7 +193,7 @@ class WebServerService extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   /// Останавливает WebSocket сервер.
   Future<void> stopWebSocketServer() async {
     // Close all client connections
@@ -200,7 +206,7 @@ class WebServerService extends ChangeNotifier {
       }
     }
     _clients.clear();
-    
+
     if (_wsServer != null) {
       await _wsServer!.close();
       _wsServer = null;
@@ -209,7 +215,7 @@ class WebServerService extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   /// Перезапускает оба сервера с новыми портами.
   Future<void> restartServers({int? httpPort, int? wsPort}) async {
     await stopHttpServer();
@@ -217,16 +223,13 @@ class WebServerService extends ChangeNotifier {
     await startHttpServer(httpPort ?? _httpPort);
     await startWebSocketServer(wsPort ?? _wsPort);
   }
-  
+
   /// Обновляет длительность таймера и отправляет всем клиентам.
   void updateTimerDuration(int duration) {
     _currentDuration = duration;
-    broadcast({
-      'action': 'update_timer',
-      'duration': duration,
-    });
+    broadcast({'action': 'update_timer', 'duration': duration});
   }
-  
+
   /// Обновляет статистику донатов и отправляет всем клиентам.
   void updateDonations({
     List<Map<String, dynamic>>? recentDonations,
@@ -244,7 +247,7 @@ class WebServerService extends ChangeNotifier {
       'topDonators': _topDonators,
     });
   }
-  
+
   /// Отправляет сообщение всем подключённым клиентам.
   void broadcast(Map<String, dynamic> message) {
     final jsonMessage = json.encode(message);
@@ -256,30 +259,31 @@ class WebServerService extends ChangeNotifier {
       }
     }
   }
-  
+
   /// Отправляет текущее состояние клиенту.
   void _sendCurrentState(WebSocketChannel client) {
     try {
-      client.sink.add(json.encode({
-        'action': 'update_timer',
-        'duration': _currentDuration,
-      }));
-      client.sink.add(json.encode({
-        'action': 'update_donations',
-        'recentDonations': _recentDonations,
-        'topDonators': _topDonators,
-      }));
+      client.sink.add(
+        json.encode({'action': 'update_timer', 'duration': _currentDuration}),
+      );
+      client.sink.add(
+        json.encode({
+          'action': 'update_donations',
+          'recentDonations': _recentDonations,
+          'topDonators': _topDonators,
+        }),
+      );
     } catch (e) {
       debugPrint('WebServerService: Error sending state to client: $e');
     }
   }
-  
+
   /// Обрабатывает входящие WebSocket сообщения.
   void _handleWebSocketMessage(dynamic message) {
     try {
       final data = json.decode(message as String);
       debugPrint('WebServerService: Received message: $data');
-      
+
       switch (data['action']) {
         case 'start':
           onStartTimer?.call();
@@ -298,24 +302,27 @@ class WebServerService extends ChangeNotifier {
       debugPrint('WebServerService: Error handling message: $e');
     }
   }
-  
+
   /// CORS middleware для кросс-доменных запросов.
   Middleware _corsMiddleware() {
     return (Handler innerHandler) {
       return (Request request) async {
         final response = await innerHandler(request);
-        return response.change(headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        });
+        return response.change(
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        );
       };
     };
   }
 
   /// Обрабатывает запрос страницы /timer для OBS Browser Source.
   Response _handleTimerPage(Request request) {
-    final htmlContent = '''
+    final htmlContent =
+        '''
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -412,12 +419,16 @@ class WebServerService extends ChangeNotifier {
 </body>
 </html>
 ''';
-    return Response.ok(htmlContent, headers: {'Content-Type': 'text/html; charset=utf-8'});
+    return Response.ok(
+      htmlContent,
+      headers: {'Content-Type': 'text/html; charset=utf-8'},
+    );
   }
-  
+
   /// Обрабатывает запрос страницы /dashboard для мобильного управления.
   Response _handleDashboardPage(Request request) {
-    final htmlContent = '''
+    final htmlContent =
+        '''
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -647,12 +658,16 @@ class WebServerService extends ChangeNotifier {
 </body>
 </html>
 ''';
-    return Response.ok(htmlContent, headers: {'Content-Type': 'text/html; charset=utf-8'});
+    return Response.ok(
+      htmlContent,
+      headers: {'Content-Type': 'text/html; charset=utf-8'},
+    );
   }
 
   /// Обрабатывает запрос страницы /mini для OBS dock панели.
   Response _handleMiniPage(Request request) {
-    final htmlContent = '''
+    final htmlContent =
+        '''
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -802,18 +817,21 @@ class WebServerService extends ChangeNotifier {
 </body>
 </html>
 ''';
-    return Response.ok(htmlContent, headers: {'Content-Type': 'text/html; charset=utf-8'});
+    return Response.ok(
+      htmlContent,
+      headers: {'Content-Type': 'text/html; charset=utf-8'},
+    );
   }
-  
+
   /// Возвращает URL страницы таймера для OBS.
   String getTimerUrl() => 'http://$_localIpAddress:$_httpPort/timer';
-  
+
   /// Возвращает URL панели управления.
   String getDashboardUrl() => 'http://$_localIpAddress:$_httpPort/dashboard';
-  
+
   /// Возвращает URL мини-страницы для OBS dock.
   String getMiniUrl() => 'http://$_localIpAddress:$_httpPort/mini';
-  
+
   /// Освобождает все ресурсы.
   @override
   void dispose() {

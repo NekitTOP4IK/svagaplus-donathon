@@ -156,6 +156,23 @@ Application configuration and local database are stored at:
 %APPDATA%\MerryJoyKeyStudio\DonatonTimer\data.json
 ```
 
+### SVAGA+ integration
+
+SVAGA+ can be connected from Settings by pairing the app with a browser. The
+integration is disabled by default; new subscriptions and renewals add 15
+minutes by default. The device token is kept only in Windows secure storage and
+is never written to `data.json`.
+
+When enabled, events received during a temporary network outage are replayed
+after reconnect. Events that occur while the integration is disabled are
+intentionally skipped. SVAGA+ history is local and remains available offline:
+use **Cancel** (with confirmation) or **Restore** for an entry. These actions
+change only the current timer and never modify server history.
+
+Set the backend URL at build time with
+`--dart-define=SVAGAPLUS_BASE_URL=...`; see
+[`docs/SVAGAPLUS_BUILD.md`](docs/SVAGAPLUS_BUILD.md) for examples.
+
 ---
 
 ## Default Network Ports

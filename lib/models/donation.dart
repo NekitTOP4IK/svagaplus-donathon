@@ -62,7 +62,9 @@ class Donation {
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    return other is Donation && other.id == id && other.serviceName == serviceName;
+    return other is Donation &&
+        other.id == id &&
+        other.serviceName == serviceName;
   }
 
   @override

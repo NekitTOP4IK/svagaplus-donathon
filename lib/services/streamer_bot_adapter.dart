@@ -29,7 +29,7 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
   @override
   Future<void> connect(Map<String, dynamic> config) async {
     _wsUrl = config['wsUrl'] as String?;
-    
+
     if (_wsUrl == null || _wsUrl!.isEmpty) {
       _wsUrl = 'ws://127.0.0.1:8080/';
     }
@@ -56,7 +56,9 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
 
   Future<void> _initConnection() async {
     try {
-      _webSocket = await WebSocket.connect(_wsUrl!).timeout(const Duration(seconds: 10));
+      _webSocket = await WebSocket.connect(
+        _wsUrl!,
+      ).timeout(const Duration(seconds: 10));
 
       LogManager.info('StreamerBot: подключено успешно (WebSocket)');
       updateStatus(ConnectionStatus.connected);
@@ -80,9 +82,9 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
       final subscribeMsg = {
         "request": "Subscribe",
         "events": events,
-        "id": "donatontimer"
+        "id": "donatontimer",
       };
-      
+
       _webSocket!.add(json.encode(subscribeMsg));
 
       _subscription = _webSocket!.listen(
@@ -117,7 +119,7 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
 
     try {
       final data = json.decode(message) as Map<String, dynamic>;
-      
+
       if (data.containsKey('event') && data.containsKey('data')) {
         _handleEventData(data);
       }
@@ -129,7 +131,7 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
   void _handleEventData(Map<String, dynamic> payload) {
     final event = payload['event'] as Map<String, dynamic>?;
     final data = payload['data'] as Map<String, dynamic>?;
-    
+
     if (event == null || data == null) return;
 
     final source = event['source'] as String?;
@@ -139,25 +141,26 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
       for (final m in _mappings) {
         if (m['source'] == source && m['type'] == type) {
           double amount = _parseDoubleField(m['amount']);
-          
+
           // Если сумма в настройках = 0, пытаемся вытащить её из данных самого события (динамическая сумма)
           if (amount <= 0) {
             final dataAmount = _parseDoubleField(data['amount']);
             final dataBits = _parseDoubleField(data['bits']);
-            
+
             if (dataAmount > 0) {
               amount = dataAmount;
             } else if (dataBits > 0) {
               amount = dataBits;
             }
           }
-          
+
           final userObj = data['user'] as Map<String, dynamic>?;
-          final username = userObj?['name'] as String? ?? 
-                           data['userName'] as String? ?? 
-                           data['name'] as String? ?? 
-                           'Anonymous';
-                           
+          final username =
+              userObj?['name'] as String? ??
+              data['userName'] as String? ??
+              data['name'] as String? ??
+              'Anonymous';
+
           final messageObj = data['message'];
           String? messageStr;
           if (messageObj is String) {
@@ -165,9 +168,9 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
           } else if (messageObj is Map<String, dynamic>) {
             messageStr = messageObj['message'] as String?;
           }
-          
+
           final id = data['msgId']?.toString() ?? data['id']?.toString();
-          
+
           _emitDonation(username, amount, 'RUB', messageStr, id);
           return; // Processed
         }
@@ -178,11 +181,17 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
     }
   }
 
-  void _emitDonation(String username, double amount, String currency, String? message, String? eventId) {
+  void _emitDonation(
+    String username,
+    double amount,
+    String currency,
+    String? message,
+    String? eventId,
+  ) {
     if (amount <= 0) return;
-    
+
     final id = eventId ?? DateTime.now().millisecondsSinceEpoch.toString();
-    
+
     final donation = Donation(
       id: '${serviceName}_$id',
       serviceName: serviceName,
@@ -218,7 +227,9 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
     _reconnectTimer = Timer(_reconnectDelay * (_reconnectAttempts + 1), () {
       _reconnectAttempts++;
       _logger.info('Reconnect attempt #$_reconnectAttempts');
-      LogManager.info('StreamerBot: попытка переподключения #$_reconnectAttempts');
+      LogManager.info(
+        'StreamerBot: попытка переподключения #$_reconnectAttempts',
+      );
       updateStatus(ConnectionStatus.reconnecting);
       _initConnection();
     });
@@ -233,7 +244,7 @@ class StreamerBotAdapter extends BaseDonationServiceAdapter {
     _reconnectTimer?.cancel();
     await _subscription?.cancel();
     await _webSocket?.close();
-    
+
     _subscription = null;
     _webSocket = null;
 

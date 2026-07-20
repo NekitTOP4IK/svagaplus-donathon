@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -7,6 +8,7 @@ import 'package:nes_ui/nes_ui.dart';
 import 'providers/localization_provider.dart';
 import 'providers/timer_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/svagaplus_provider.dart';
 import 'services/storage_service.dart';
 import 'services/donation_service.dart';
 import 'services/donation_alerts_adapter.dart';
@@ -19,6 +21,9 @@ import 'services/streamer_bot_adapter.dart';
 import 'services/web_server_service.dart';
 import 'services/sound_service.dart';
 import 'services/log_manager.dart';
+import 'services/svagaplus_adapter.dart';
+import 'services/svagaplus_api_client.dart';
+import 'services/svagaplus_credential_store.dart';
 import 'screens/main_screen.dart';
 
 void main() async {
@@ -74,7 +79,7 @@ void main() async {
   final donationService = DonationService(storageService);
   await donationService.init();
   LogManager.info('Donation service инициализирован');
-  
+
   // Register donation service adapters
   LogManager.info('Регистрация адаптеров донат-сервисов...');
   donationService.registerAdapter(DonationAlertsAdapter());
@@ -91,7 +96,7 @@ void main() async {
   LogManager.info('Адаптер CloudTips зарегистрирован');
   donationService.registerAdapter(StreamerBotAdapter());
   LogManager.info('Адаптер StreamerBot зарегистрирован');
-  
+
   // Auto-connect enabled services from saved settings
   final settings = donationService.settings;
   LogManager.info('Проверка сохранённых настроек сервисов...');
@@ -100,24 +105,54 @@ void main() async {
     if (config.enabled) {
       try {
         LogManager.info('Подключение к ${config.serviceName}...');
-        await donationService.connectAdapter(config.serviceName, config.credentials);
+        await donationService.connectAdapter(
+          config.serviceName,
+          config.credentials,
+        );
         LogManager.info('${config.serviceName} успешно подключён');
       } catch (e) {
         LogManager.error('Не удалось подключиться к ${config.serviceName}: $e');
       }
     }
   }
-  
+
   // Connect donation service to timer
   donationService.onTimeAdded = (seconds) {
     timerProvider.addTime(seconds);
   };
 
+  // Initialize SVAGA+ integration without blocking app startup on network I/O.
+  final svagaApi = SvagaPlusApiClient();
+  final svagaCredentialStore = SvagaPlusCredentialStore();
+  final svagaCredentials = await svagaCredentialStore.load();
+  final svagaAdapter = SvagaPlusAdapter(
+    api: svagaApi,
+    credentials:
+        svagaCredentials ?? const SvagaPlusCredentials(deviceId: '', token: ''),
+    lastCursor: storageService.loadSvagaCursor(),
+    appVersion: SvagaPlusProvider.appVersion,
+  );
+  final svagaProvider = SvagaPlusProvider(
+    storage: storageService,
+    timerProvider: timerProvider,
+    donationService: donationService,
+    api: svagaApi,
+    credentialStore: svagaCredentialStore,
+    adapter: svagaAdapter,
+    adapterFactory: (api, credentials, cursor) => SvagaPlusAdapter(
+      api: api,
+      credentials: credentials,
+      lastCursor: cursor,
+      appVersion: SvagaPlusProvider.appVersion,
+    ),
+  );
+  await svagaProvider.init(autoConnect: false);
+
   // Initialize sound service for donation notifications
   final soundService = SoundService();
   await soundService.init();
   LogManager.info('Sound service инициализирован');
-  
+
   // Load sound and logging settings from app settings
   final savedSettings = storageService.loadSettings();
   if (savedSettings != null) {
@@ -132,34 +167,34 @@ void main() async {
     httpPort: savedSettings?.httpPort ?? 7575,
     wsPort: savedSettings?.wsPort ?? 3434,
   );
-  if (savedSettings != null && (savedSettings.httpPort == 8080 || savedSettings.wsPort == 4040)) {
+  if (savedSettings != null &&
+      (savedSettings.httpPort == 8080 || savedSettings.wsPort == 4040)) {
     webServerService.hasOldPortsWarning = true;
   }
   await webServerService.init();
   LogManager.info('Web server service инициализирован');
-  
+
   // Connect web server to timer provider
   webServerService.onStartTimer = () => timerProvider.start();
   webServerService.onStopTimer = () => timerProvider.stop();
   webServerService.onChangeTime = (seconds) => timerProvider.addTime(seconds);
-  
+
   // Listen to timer changes and broadcast to web clients
   timerProvider.addListener(() {
     webServerService.updateTimerDuration(timerProvider.duration);
   });
-  
+
   // Listen to donation changes and broadcast to web clients
   donationService.addListener(() {
     final stats = donationService.statistics;
     webServerService.updateDonations(
-      recentDonations: stats.recentDonations.map((d) => {
-        'username': d.username,
-        'minutesAdded': d.minutesAdded,
-      }).toList(),
+      recentDonations: stats.recentDonations
+          .map((d) => {'username': d.username, 'minutesAdded': d.minutesAdded})
+          .toList(),
       topDonators: stats.topDonators,
     );
   });
-  
+
   // Play sound when donation is received
   donationService.donationStream.listen((_) {
     soundService.playSound();
@@ -175,14 +210,47 @@ void main() async {
         ChangeNotifierProvider<DonationService>.value(value: donationService),
         ChangeNotifierProvider<WebServerService>.value(value: webServerService),
         ChangeNotifierProvider<SoundService>.value(value: soundService),
+        ChangeNotifierProvider<SvagaPlusProvider>.value(value: svagaProvider),
       ],
       child: const DonatonTimerApp(),
     ),
   );
+
+  // Network startup happens after the first frame/preloader handoff.
+  unawaited(svagaProvider.startIfEnabled());
 }
 
-class DonatonTimerApp extends StatelessWidget {
+class DonatonTimerApp extends StatefulWidget {
   const DonatonTimerApp({super.key});
+
+  @override
+  State<DonatonTimerApp> createState() => _DonatonTimerAppState();
+}
+
+class _DonatonTimerAppState extends State<DonatonTimerApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final provider = context.read<SvagaPlusProvider?>();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      unawaited(provider?.adapter.stop());
+    } else if (state == AppLifecycleState.resumed) {
+      unawaited(provider?.startIfEnabled());
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -241,7 +309,8 @@ class PreloaderScreen extends StatefulWidget {
   State<PreloaderScreen> createState() => _PreloaderScreenState();
 }
 
-class _PreloaderScreenState extends State<PreloaderScreen> with SingleTickerProviderStateMixin {
+class _PreloaderScreenState extends State<PreloaderScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -295,12 +364,7 @@ class _PreloaderScreenState extends State<PreloaderScreen> with SingleTickerProv
                   fontFamily: 'monospace',
                   color: Color(0xffb4b6f6),
                   letterSpacing: 2,
-                  shadows: [
-                    Shadow(
-                      color: Color(0x88b4b6f6),
-                      blurRadius: 10,
-                    ),
-                  ],
+                  shadows: [Shadow(color: Color(0x88b4b6f6), blurRadius: 10)],
                 ),
               ),
             ),

@@ -39,12 +39,17 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
   /// Extracts tokens from the URL.
   /// Supports: https://widgets.donatty.com/group/?ref={group_id}&token={link_token}
   static Map<String, String>? extractTokens(String input) {
-    if (input.contains('donatty.com') && input.contains('ref=') && input.contains('token=')) {
+    if (input.contains('donatty.com') &&
+        input.contains('ref=') &&
+        input.contains('token=')) {
       final uri = Uri.tryParse(input);
       if (uri != null) {
         final ref = uri.queryParameters['ref'];
         final token = uri.queryParameters['token'];
-        if (ref != null && token != null && ref.isNotEmpty && token.isNotEmpty) {
+        if (ref != null &&
+            token != null &&
+            ref.isNotEmpty &&
+            token.isNotEmpty) {
           return {'group_id': ref, 'link_token': token};
         }
       }
@@ -58,7 +63,7 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
     await disconnect();
 
     final urlOrTokens = config['token'] as String?;
-    
+
     if (urlOrTokens == null || urlOrTokens.isEmpty) {
       _logger.warning('Token or URL is required for Donatty connection');
       LogManager.warning('Donatty: токен или ссылка не указаны');
@@ -70,17 +75,23 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
     if (tokens != null) {
       _groupId = tokens['group_id'];
       _linkToken = tokens['link_token'];
-      LogManager.info('Donatty: URL parsed, groupId=${_maskToken(_groupId)}, linkToken=${_maskToken(_linkToken)}');
+      LogManager.info(
+        'Donatty: URL parsed, groupId=${_maskToken(_groupId)}, linkToken=${_maskToken(_linkToken)}',
+      );
     } else {
       // It might be a token configuration, but we strictly need both group_id and link_token or a full link
-      _logger.warning('Invalid Donatty link format. Ensure it contains ref and token.');
-      LogManager.warning('Donatty: неверный формат ссылки. Необходима ссылка с ref и token.');
+      _logger.warning(
+        'Invalid Donatty link format. Ensure it contains ref and token.',
+      );
+      LogManager.warning(
+        'Donatty: неверный формат ссылки. Необходима ссылка с ref и token.',
+      );
       updateStatus(ConnectionStatus.error);
       return;
     }
 
     _apiServer = config['apiServer'] as String? ?? 'api-014';
-    
+
     updateStatus(ConnectionStatus.connecting);
     _logger.info('Connecting to Donatty via $_apiServer...');
     LogManager.info('Donatty: получение access_token (сервер: $_apiServer)...');
@@ -94,35 +105,45 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
         ..connectionTimeout = const Duration(seconds: 15);
 
       // 1. Get access token
-      final authUrl = Uri.parse('https://$_apiServer.donatty.com/auth/tokens/$_linkToken');
+      final authUrl = Uri.parse(
+        'https://$_apiServer.donatty.com/auth/tokens/$_linkToken',
+      );
       final authRequest = await _httpClient!.getUrl(authUrl);
       final authResponse = await authRequest.close();
 
       if (authResponse.statusCode != 200) {
-        throw Exception('Failed to get auth token. Status code: ${authResponse.statusCode}');
+        throw Exception(
+          'Failed to get auth token. Status code: ${authResponse.statusCode}',
+        );
       }
 
       final authBody = await authResponse.transform(utf8.decoder).join();
       final authJson = json.decode(authBody) as Map<String, dynamic>;
-      
+
       _accessToken = authJson['response']?['accessToken'] as String?;
 
       if (_accessToken == null || _accessToken!.isEmpty) {
         throw Exception('Access token not found in response');
       }
 
-      LogManager.info('Donatty: access_token получен (${_maskToken(_accessToken)}), подключение к SSE...');
+      LogManager.info(
+        'Donatty: access_token получен (${_maskToken(_accessToken)}), подключение к SSE...',
+      );
 
       // 2. Connect to SSE
-      final sseUrl = Uri.parse('https://$_apiServer.donatty.com/widgets/$_groupId/sse?jwt=$_accessToken');
+      final sseUrl = Uri.parse(
+        'https://$_apiServer.donatty.com/widgets/$_groupId/sse?jwt=$_accessToken',
+      );
       _request = await _httpClient!.getUrl(sseUrl);
       _request!.headers.set('Accept', 'text/event-stream');
       _request!.headers.set('Cache-Control', 'no-cache');
-      
+
       _response = await _request!.close();
 
       if (_response!.statusCode != 200) {
-        throw Exception('Failed to connect to SSE. Status code: ${_response!.statusCode}');
+        throw Exception(
+          'Failed to connect to SSE. Status code: ${_response!.statusCode}',
+        );
       }
 
       LogManager.info('Donatty: подключено успешно (SSE)');
@@ -146,7 +167,6 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
               _handleDisconnect();
             },
           );
-
     } catch (e, stackTrace) {
       _logger.severe('Error connecting to Donatty: $e\n$stackTrace');
       LogManager.error('Donatty: ошибка подключения - $e');
@@ -167,7 +187,7 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
     if (line.startsWith('data')) {
       final jsonStartIndex = line.indexOf('{');
       if (jsonStartIndex == -1) return;
-      
+
       final jsonStr = line.substring(jsonStartIndex).trim();
       if (jsonStr.isEmpty) return;
 
@@ -190,7 +210,7 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
 
   void _handleEventData(Map<String, dynamic> data) {
     final action = data['action'] as String?;
-    
+
     if (action == 'PING') {
       _logger.fine('Received PING');
       return;
@@ -226,9 +246,9 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
 
   void _processDonation(Map<String, dynamic> eventData) {
     final eventType = eventData['streamEventType'] as String?;
-    
+
     if (eventType != 'DONATTY_DONATION') {
-       return;
+      return;
     }
 
     try {
@@ -236,13 +256,14 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
       final message = eventData['message'] as String?;
       final amount = _parseDoubleField(eventData['amount']);
       final currency = eventData['currency'] as String? ?? 'RUB';
-      
+
       // Parse streamEventData for detailed info like ID
       String id = DateTime.now().millisecondsSinceEpoch.toString();
       final streamEventDataStr = eventData['streamEventData'] as String?;
       if (streamEventDataStr != null) {
         try {
-          final parsedEventData = json.decode(streamEventDataStr) as Map<String, dynamic>;
+          final parsedEventData =
+              json.decode(streamEventDataStr) as Map<String, dynamic>;
           if (parsedEventData['refId'] != null) {
             id = parsedEventData['refId'].toString();
           }
@@ -262,7 +283,6 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
       _logger.info('Donation: $subscriber - $amount $currency');
       LogManager.info('Donatty: донат от $subscriber - $amount $currency');
       emitDonation(donation);
-
     } catch (e, stackTrace) {
       _logger.severe('Error processing Donatty donation: $e\n$stackTrace');
       LogManager.error('Donatty: ошибка обработки доната - $e');
@@ -303,10 +323,10 @@ class DonattyAdapter extends BaseDonationServiceAdapter {
 
     _reconnectTimer?.cancel();
     await _subscription?.cancel();
-    
+
     // Close HTTP request and client if possible
     _httpClient?.close(force: true);
-    
+
     _subscription = null;
     _request = null;
     _response = null;

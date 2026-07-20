@@ -30,7 +30,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
-    
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final webServer = context.read<WebServerService?>();
       if (webServer != null && webServer.hasOldPortsWarning) {
@@ -51,7 +51,10 @@ class _MainScreenState extends State<MainScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                NesIcon(iconData: NesIcons.exclamationMarkBlock, size: const Size(48, 48)),
+                NesIcon(
+                  iconData: NesIcons.exclamationMarkBlock,
+                  size: const Size(48, 48),
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Обнаружены старые настройки портов (8080/4040).\n\n'
@@ -69,7 +72,7 @@ class _MainScreenState extends State<MainScreen> {
                     final donationService = context.read<DonationService?>();
                     if (webServer != null && donationService != null) {
                       webServer.hasOldPortsWarning = false;
-                      
+
                       final currentSettings = donationService.settings;
                       final newSettings = currentSettings.copyWith(
                         httpPort: 7575,
@@ -79,7 +82,7 @@ class _MainScreenState extends State<MainScreen> {
                       webServer.restartServers(httpPort: 7575, wsPort: 3434);
                     }
                     Navigator.of(context).pop();
-                    
+
                     NesSnackbar.show(
                       context,
                       text: 'Порты успешно обновлены!',
