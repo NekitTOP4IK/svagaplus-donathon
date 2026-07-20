@@ -40,6 +40,7 @@ class SvagaPlusProvider extends ChangeNotifier {
   bool _initialized = false;
   bool _historySyncing = false;
   Object? _historyError;
+  bool _pairingInProgress = false;
 
   Future<bool> Function(Uri uri) openUrl = (_) async => false;
 
@@ -70,6 +71,7 @@ class SvagaPlusProvider extends ChangeNotifier {
       );
   bool get historySyncing => _historySyncing;
   Object? get historyError => _historyError;
+  bool get pairingInProgress => _pairingInProgress;
 
   Future<void> init({bool autoConnect = true}) async {
     if (_initialized) return;
@@ -251,34 +253,42 @@ class SvagaPlusProvider extends ChangeNotifier {
   }
 
   Future<void> startPairing({String deviceName = 'Donaton Timer'}) async {
-    final pairing = await api.startPairing(deviceName: deviceName);
-    final uri =
-        Uri.tryParse(pairing.verificationUri ?? '') ??
-        Uri.parse('${api.baseUri}/timer/connect?code=${pairing.userCode}');
-    final opened = await openUrl(uri);
-    if (!opened) {
-      throw StateError('Не удалось открыть ссылку сопряжения в браузере');
-    }
-    SvagaPlusPairingPoll poll = const SvagaPlusPairingPoll(pending: true);
-    while (poll.pending && DateTime.now().toUtc().isBefore(pairing.expiresAt)) {
-      poll = await api.pollPairing(pairing.pairingId, pairing.pairingSecret);
-      if (poll.pending) {
-        await Future<void>.delayed(
-          Duration(seconds: poll.interval.clamp(1, 30)),
-        );
-      }
-    }
-    if (poll.pending || poll.credentials == null) {
-      throw const SvagaPlusHttpException(410);
-    }
-    await api.completePairing(pairing.pairingId, poll.credentials!);
-    final paired = poll.credentials!;
-    await credentialStore.save(paired);
-    _credentials = paired;
-    _settings = _settings.copyWith(enabled: false, deviceId: paired.deviceId);
-    await _saveSettings();
-    await _replaceAdapter();
+    if (_pairingInProgress) return;
+    _pairingInProgress = true;
     notifyListeners();
+    try {
+      final pairing = await api.startPairing(deviceName: deviceName);
+      final uri =
+          Uri.tryParse(pairing.verificationUri ?? '') ??
+          Uri.parse('${api.baseUri}/timer/connect?code=${pairing.userCode}');
+      final opened = await openUrl(uri);
+      if (!opened) {
+        throw StateError('Не удалось открыть ссылку сопряжения в браузере');
+      }
+      SvagaPlusPairingPoll poll = const SvagaPlusPairingPoll(pending: true);
+      while (poll.pending &&
+          DateTime.now().toUtc().isBefore(pairing.expiresAt)) {
+        poll = await api.pollPairing(pairing.pairingId, pairing.pairingSecret);
+        if (poll.pending) {
+          await Future<void>.delayed(
+            Duration(seconds: poll.interval.clamp(1, 30)),
+          );
+        }
+      }
+      if (poll.pending || poll.credentials == null) {
+        throw const SvagaPlusHttpException(410);
+      }
+      await api.completePairing(pairing.pairingId, poll.credentials!);
+      final paired = poll.credentials!;
+      await credentialStore.save(paired);
+      _credentials = paired;
+      _settings = _settings.copyWith(enabled: false, deviceId: paired.deviceId);
+      await _saveSettings();
+      await _replaceAdapter();
+    } finally {
+      _pairingInProgress = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _handleAuthorizationRequired() async {

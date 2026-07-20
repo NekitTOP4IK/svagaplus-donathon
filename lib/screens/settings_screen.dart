@@ -974,16 +974,18 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
   Widget _buildSvagaPlusSection(LocalizationProvider localization) {
     final provider = context.watch<SvagaPlusProvider?>();
     final currentStatus = provider?.status ?? SvagaPlusStatus.disconnected;
-    final statusKey = switch (currentStatus) {
-      SvagaPlusStatus.connected => 'connected',
-      SvagaPlusStatus.connecting ||
-      SvagaPlusStatus.syncing ||
-      SvagaPlusStatus.reconnecting => 'connecting',
-      SvagaPlusStatus.authorizationRequired =>
-        'svagaplus_authorization_required',
-      SvagaPlusStatus.error => 'error',
-      SvagaPlusStatus.disconnected => 'disconnected',
-    };
+    final statusKey = provider?.pairingInProgress == true
+        ? 'svagaplus_pairing_waiting'
+        : switch (currentStatus) {
+            SvagaPlusStatus.connected => 'connected',
+            SvagaPlusStatus.connecting ||
+            SvagaPlusStatus.syncing ||
+            SvagaPlusStatus.reconnecting => 'connecting',
+            SvagaPlusStatus.authorizationRequired =>
+              'svagaplus_authorization_required',
+            SvagaPlusStatus.error => 'error',
+            SvagaPlusStatus.disconnected => 'disconnected',
+          };
 
     return NesContainer(
       label: localization.tr('svagaplus'),
@@ -1026,6 +1028,11 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
               ],
             ),
             const SizedBox(height: 12),
+            if (provider?.pairingInProgress == true)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(localization.tr('svagaplus_pairing_waiting')),
+              ),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -1033,7 +1040,7 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                 NesButton.text(
                   type: NesButtonType.normal,
                   text: localization.tr('svagaplus_pair'),
-                  onPressed: provider == null
+                  onPressed: provider == null || provider.pairingInProgress
                       ? null
                       : () async {
                           try {
