@@ -211,6 +211,8 @@
   "svagaplus_new_minutes": "Минут за новую подписку",
   "svagaplus_renewed_minutes": "Минут за продление",
   "svagaplus_pair": "Привязать устройство",
+  "svagaplus_pair_error": "Не удалось привязать устройство",
+  "svagaplus_timer_settings": "Время SVAGA+",
   "svagaplus_disconnect": "Отключить",
   "svagaplus_reconnect": "Переподключить",
   "svagaplus_authorization_required": "Требуется авторизация",

@@ -202,10 +202,6 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
   final _sbTypeController = TextEditingController();
   final _sbAmountController = TextEditingController();
 
-  final _svagaNewMinutesController = TextEditingController();
-  final _svagaRenewedMinutesController = TextEditingController();
-  bool _svagaEnabled = false;
-
   // Available socket servers for DonationAlerts
   static const List<String> _socketServers = [
     'socket5',
@@ -223,15 +219,6 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
   }
 
   void _loadSettings() {
-    final svagaProvider = context.read<SvagaPlusProvider?>();
-    if (svagaProvider != null) {
-      _svagaEnabled = svagaProvider.settings.enabled;
-      _svagaNewMinutesController.text =
-          '${svagaProvider.settings.newSubscriptionSeconds ~/ 60}';
-      _svagaRenewedMinutesController.text =
-          '${svagaProvider.settings.renewedSubscriptionSeconds ~/ 60}';
-    }
-
     final donationService = context.read<DonationService?>();
     if (donationService == null) return;
 
@@ -322,8 +309,6 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
     _sbSourceController.dispose();
     _sbTypeController.dispose();
     _sbAmountController.dispose();
-    _svagaNewMinutesController.dispose();
-    _svagaRenewedMinutesController.dispose();
     super.dispose();
   }
 
@@ -1000,41 +985,6 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
       SvagaPlusStatus.disconnected => 'disconnected',
     };
 
-    Future<void> save() async {
-      if (provider == null) return;
-      final newMinutes = int.tryParse(_svagaNewMinutesController.text.trim());
-      final renewedMinutes = int.tryParse(
-        _svagaRenewedMinutesController.text.trim(),
-      );
-      if (newMinutes == null ||
-          renewedMinutes == null ||
-          newMinutes < 0 ||
-          renewedMinutes < 0 ||
-          newMinutes > 1440 ||
-          renewedMinutes > 1440) {
-        NesSnackbar.show(
-          context,
-          text: localization.tr('svagaplus_invalid_minutes'),
-          type: NesSnackbarType.error,
-        );
-        return;
-      }
-      await provider.updateSettings(
-        provider.settings.copyWith(
-          enabled: _svagaEnabled,
-          newSubscriptionSeconds: newMinutes * 60,
-          renewedSubscriptionSeconds: renewedMinutes * 60,
-        ),
-      );
-      if (mounted) {
-        NesSnackbar.show(
-          context,
-          text: localization.tr('settings_saved'),
-          type: NesSnackbarType.success,
-        );
-      }
-    }
-
     return NesContainer(
       label: localization.tr('svagaplus'),
       child: Padding(
@@ -1060,34 +1010,20 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
             Row(
               children: [
                 NesCheckBox(
-                  value: _svagaEnabled,
-                  onChange: (value) => setState(() => _svagaEnabled = value),
+                  value: provider?.settings.enabled ?? false,
+                  onChange: provider == null
+                      ? null
+                      : (value) => provider.updateSettings(
+                          provider.settings.copyWith(enabled: value),
+                        ),
                 ),
                 const SizedBox(width: 10),
-                Text(localization.tr(_svagaEnabled ? 'enabled' : 'disabled')),
+                Text(
+                  localization.tr(
+                    provider?.settings.enabled == true ? 'enabled' : 'disabled',
+                  ),
+                ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Text(localization.tr('svagaplus_new_minutes')),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _svagaNewMinutesController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: '15',
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(localization.tr('svagaplus_renewed_minutes')),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _svagaRenewedMinutesController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: '15',
-                border: const OutlineInputBorder(),
-              ),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -1095,16 +1031,24 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
               runSpacing: 8,
               children: [
                 NesButton.text(
-                  type: NesButtonType.success,
-                  text: localization.tr('save'),
-                  onPressed: provider == null ? null : save,
-                ),
-                NesButton.text(
                   type: NesButtonType.normal,
                   text: localization.tr('svagaplus_pair'),
                   onPressed: provider == null
                       ? null
-                      : () => provider.startPairing(),
+                      : () async {
+                          try {
+                            await provider.startPairing();
+                          } catch (error) {
+                            if (context.mounted) {
+                              NesSnackbar.show(
+                                context,
+                                text:
+                                    '${localization.tr('svagaplus_pair_error')}: $error',
+                                type: NesSnackbarType.error,
+                              );
+                            }
+                          }
+                        },
                 ),
                 NesButton.text(
                   type: NesButtonType.normal,
@@ -1630,6 +1574,9 @@ class _TimerSettingsTabState extends State<TimerSettingsTab> {
           ),
           const SizedBox(height: 16),
 
+          const SvagaPlusTimerSettingsSection(),
+          const SizedBox(height: 16),
+
           // Save button
           NesButton.text(
             type: NesButtonType.success,
@@ -1637,6 +1584,116 @@ class _TimerSettingsTabState extends State<TimerSettingsTab> {
             onPressed: _saveTimerSettings,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class SvagaPlusTimerSettingsSection extends StatefulWidget {
+  const SvagaPlusTimerSettingsSection({super.key});
+
+  @override
+  State<SvagaPlusTimerSettingsSection> createState() =>
+      _SvagaPlusTimerSettingsSectionState();
+}
+
+class _SvagaPlusTimerSettingsSectionState
+    extends State<SvagaPlusTimerSettingsSection> {
+  final _newMinutesController = TextEditingController();
+  final _renewedMinutesController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final provider = context.read<SvagaPlusProvider?>();
+    _newMinutesController.text = provider == null
+        ? '15'
+        : '${provider.settings.newSubscriptionSeconds ~/ 60}';
+    _renewedMinutesController.text = provider == null
+        ? '15'
+        : '${provider.settings.renewedSubscriptionSeconds ~/ 60}';
+  }
+
+  @override
+  void dispose() {
+    _newMinutesController.dispose();
+    _renewedMinutesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final provider = context.read<SvagaPlusProvider?>();
+    if (provider == null) return;
+    final localization = context.read<LocalizationProvider>();
+    final newMinutes = int.tryParse(_newMinutesController.text.trim());
+    final renewedMinutes = int.tryParse(_renewedMinutesController.text.trim());
+    if (newMinutes == null ||
+        renewedMinutes == null ||
+        newMinutes < 0 ||
+        renewedMinutes < 0 ||
+        newMinutes > 1440 ||
+        renewedMinutes > 1440) {
+      NesSnackbar.show(
+        context,
+        text: localization.tr('svagaplus_invalid_minutes'),
+        type: NesSnackbarType.error,
+      );
+      return;
+    }
+    await provider.updateSettings(
+      provider.settings.copyWith(
+        newSubscriptionSeconds: newMinutes * 60,
+        renewedSubscriptionSeconds: renewedMinutes * 60,
+      ),
+    );
+    if (mounted) {
+      NesSnackbar.show(
+        context,
+        text: localization.tr('settings_saved'),
+        type: NesSnackbarType.success,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localization = context.watch<LocalizationProvider>();
+    return NesContainer(
+      label: localization.tr('svagaplus_timer_settings'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(localization.tr('svagaplus_new_minutes')),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _newMinutesController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: '15',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(localization.tr('svagaplus_renewed_minutes')),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _renewedMinutesController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                hintText: '15',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            NesButton.text(
+              type: NesButtonType.success,
+              text: localization.tr('save'),
+              onPressed: _save,
+            ),
+          ],
+        ),
       ),
     );
   }

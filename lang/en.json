@@ -211,6 +211,8 @@
   "svagaplus_new_minutes": "Minutes for new subscription",
   "svagaplus_renewed_minutes": "Minutes for renewal",
   "svagaplus_pair": "Pair device",
+  "svagaplus_pair_error": "Unable to pair device",
+  "svagaplus_timer_settings": "SVAGA+ time",
   "svagaplus_disconnect": "Disconnect",
   "svagaplus_reconnect": "Reconnect",
   "svagaplus_authorization_required": "Authorization required",
