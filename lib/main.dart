@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:nes_ui/nes_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'providers/localization_provider.dart';
 import 'providers/timer_provider.dart';
@@ -147,6 +148,8 @@ void main() async {
     ),
   );
   await svagaProvider.init(autoConnect: false);
+  svagaProvider.openUrl = (uri) =>
+      launchUrl(uri, mode: LaunchMode.externalApplication);
 
   // Initialize sound service for donation notifications
   final soundService = SoundService();

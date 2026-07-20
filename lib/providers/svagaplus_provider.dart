@@ -255,7 +255,10 @@ class SvagaPlusProvider extends ChangeNotifier {
     final uri =
         Uri.tryParse(pairing.verificationUri ?? '') ??
         Uri.parse('${api.baseUri}/timer/connect?code=${pairing.userCode}');
-    await openUrl(uri);
+    final opened = await openUrl(uri);
+    if (!opened) {
+      throw StateError('Не удалось открыть ссылку сопряжения в браузере');
+    }
     SvagaPlusPairingPoll poll = const SvagaPlusPairingPoll(pending: true);
     while (poll.pending && DateTime.now().toUtc().isBefore(pairing.expiresAt)) {
       poll = await api.pollPairing(pairing.pairingId, pairing.pairingSecret);
