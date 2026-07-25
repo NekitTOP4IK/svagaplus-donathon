@@ -1,0 +1,120 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag in vA.B.C format'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, build, and publish Windows release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release version and source branch
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $tag = if ($env:EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_VERSION } else { $env:REF_NAME }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Version must use vA.B.C, got '$tag'."
+          }
+
+          $version = $tag.Substring(1)
+          $pubspecVersion = ((Select-String -Path pubspec.yaml -Pattern '^version:\s*' | Select-Object -First 1).Line -replace '^version:\s*', '' -split '\+')[0]
+          if ($pubspecVersion -ne $version) {
+            throw "Tag $tag does not match pubspec.yaml version $pubspecVersion."
+          }
+
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $branch = $env:REF_NAME
+            if ($branch -notin @('dev', 'main')) {
+              throw "Manual releases must run from dev or main, not '$branch'."
+            }
+          } else {
+            git fetch origin main:refs/remotes/origin/main dev:refs/remotes/origin/dev
+            $branches = @(
+              git branch -r --contains HEAD --format='%(refname:short)' |
+                ForEach-Object { $_.Trim() } |
+                Where-Object { $_ -in @('origin/dev', 'origin/main') } |
+                ForEach-Object { $_ -replace '^origin/', '' }
+            )
+            if ($branches.Count -ne 1) {
+              throw "Tagged commit must belong to exactly one release branch (dev or main); found: $($branches -join ', ')."
+            }
+            $branch = $branches[0]
+          }
+
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_BRANCH=$branch" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PRERELEASE=$($branch -eq 'dev').ToString().ToLowerInvariant()" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Fetch Flutter dependencies
+        run: flutter pub get
+
+      - name: Run Flutter tests
+        run: flutter test
+
+      - name: Build production Windows application
+        shell: pwsh
+        run: |
+          flutter build windows --release `
+            --dart-define=SVAGAPLUS_ENV=production `
+            --dart-define=SVAGAPLUS_BASE_URL=https://svagaplus.com
+
+      - name: Create portable archive
+        shell: pwsh
+        run: |
+          $releaseDirectory = 'build\windows\x64\runner\Release'
+          if (!(Test-Path $releaseDirectory)) {
+            throw "Windows release directory was not produced: $releaseDirectory"
+          }
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Compress-Archive -Path "$releaseDirectory\*" -DestinationPath "release-assets\DonatonTimer_$env:RELEASE_TAG`_Portable.zip"
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --yes
+          $installerScript = Get-Content -Raw setup.iss
+          $installerScript = $installerScript -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$env:RELEASE_VERSION`""
+          $installerScript = $installerScript -replace 'OutputDir=installer', 'OutputDir=release-assets'
+          $installerScript | Set-Content -Path release-setup.iss -NoNewline -Encoding utf8NoBOM
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' release-setup.iss
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          prerelease: ${{ env.PRERELEASE }}
+          generate_release_notes: true
+          files: |
+            release-assets/DonatonTimer_${{ env.RELEASE_TAG }}_Setup.exe
+            release-assets/DonatonTimer_${{ env.RELEASE_TAG }}_Portable.zip
