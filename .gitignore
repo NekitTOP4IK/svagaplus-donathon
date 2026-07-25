@@ -1,5 +1,6 @@
 # ── AI / Personal helper files ──────────────────────────────────────────────
 PROJECT_CONTEXT.md
+.worktrees/
 .gitignore
 # ── Flutter / Dart ───────────────────────────────────────────────────────────
 # Build outputs
