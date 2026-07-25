@@ -1065,7 +1065,7 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                 NesButton.text(
                   type: NesButtonType.normal,
                   text: localization.tr('svagaplus_reconnect'),
-                  onPressed: provider == null ? null : () => provider.connect(),
+                  onPressed: provider == null ? null : () => provider.enable(),
                 ),
                 NesButton.text(
                   type: NesButtonType.normal,

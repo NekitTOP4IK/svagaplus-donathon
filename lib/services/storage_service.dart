@@ -227,6 +227,18 @@ class StorageService {
     });
   }
 
+  /// Sets a deliberately chosen cursor baseline, including one behind the
+  /// previously acknowledged position.
+  Future<void> replaceSvagaCursor(int cursor) async {
+    await _mutate<void>((snapshot) {
+      final svaga = Map<String, dynamic>.from(
+        snapshot['svagaplus'] is Map ? snapshot['svagaplus'] as Map : {},
+      );
+      svaga['last_cursor'] = cursor < 0 ? 0 : cursor;
+      snapshot['svagaplus'] = svaga;
+    });
+  }
+
   Future<void> saveSvagaHistoryEntry(Map<String, dynamic> entry) async {
     await _mutate<void>((snapshot) {
       final svaga = Map<String, dynamic>.from(

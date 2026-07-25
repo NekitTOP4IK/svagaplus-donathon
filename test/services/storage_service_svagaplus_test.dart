@@ -5,6 +5,18 @@ import 'package:donaton_timer/models/svagaplus_subscription_event.dart';
 import 'package:donaton_timer/services/storage_service.dart';
 
 void main() {
+  test('replaces an existing SVAGA+ cursor with an exact baseline', () async {
+    final directory = await Directory.systemTemp.createTemp('svaga-storage-');
+    addTearDown(() => directory.delete(recursive: true));
+    final storage = StorageService(appDataDir: directory);
+    await storage.init();
+
+    await storage.setSvagaCursor(99);
+    await storage.replaceSvagaCursor(4);
+
+    expect(storage.loadSvagaCursor(), 4);
+  });
+
   test(
     'serializes SVAGA+ event, cursor and cancel/restore ledger atomically',
     () async {

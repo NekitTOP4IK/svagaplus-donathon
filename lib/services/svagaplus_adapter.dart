@@ -214,8 +214,10 @@ class SvagaPlusAdapter {
     });
   }
 
-  void acknowledge(SvagaPlusSubscriptionEvent event) =>
-      _socket?.acknowledge(event.id, event.cursor);
+  void acknowledge(SvagaPlusSubscriptionEvent event) {
+    if (event.cursor > _cursor) _cursor = event.cursor;
+    _socket?.acknowledge(event.id, event.cursor);
+  }
 
   Future<void> stop() async {
     _running = false;

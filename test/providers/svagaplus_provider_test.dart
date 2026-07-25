@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:donaton_timer/models/svagaplus_subscription_event.dart';
+import 'package:donaton_timer/models/svagaplus_history_entry.dart';
 import 'package:donaton_timer/models/app_settings.dart';
 import 'package:donaton_timer/models/service_config.dart';
 import 'package:donaton_timer/models/svagaplus_settings.dart';
@@ -26,6 +27,11 @@ class MemoryStorage extends StorageService {
   @override
   Future<void> setSvagaCursor(int value) async {
     if (value > cursor) cursor = value;
+  }
+
+  @override
+  Future<void> replaceSvagaCursor(int value) async {
+    cursor = value < 0 ? 0 : value;
   }
 
   @override
@@ -75,7 +81,9 @@ class MemoryCredentials extends SvagaPlusCredentialStore {
 class MemoryApi extends SvagaPlusApiClient {
   int head = 0;
   SvagaPlusCredentials? pairedCredentials;
+  int? pairingInitialCursor = 4;
   int consumeCount = 0;
+  int getHistoryCalls = 0;
   List<SvagaPlusSubscriptionEvent> historyEvents = [];
 
   MemoryApi() : super(baseUri: Uri.parse('https://example.test'));
@@ -103,7 +111,7 @@ class MemoryApi extends SvagaPlusApiClient {
         deviceId: 'device-1',
         token: 'secret-token',
       ),
-      initialCursor: 4,
+      initialCursor: pairingInitialCursor,
     );
   }
 
@@ -119,6 +127,7 @@ class MemoryApi extends SvagaPlusApiClient {
     int? before,
     int limit = 50,
   }) async {
+    getHistoryCalls++;
     final events = historyEvents
         .where((event) => before == null || event.cursor < before)
         .toList();
@@ -294,6 +303,7 @@ void main() {
       await provider.enable();
 
       expect(provider.settings.enabled, isTrue);
+      expect(storage.cursor, 90);
       expect(provider.baselineCursor, 90);
       expect(adapter.starts, 1);
       provider.dispose();
@@ -324,11 +334,12 @@ void main() {
     await provider.enable();
 
     expect(provider.baselineCursor, 31);
+    expect(storage.cursor, 31);
     expect(adapter.starts, 2);
     provider.dispose();
   });
 
-  test('syncHistory imports only events after the device baseline', () async {
+  test('syncHistory reloads only the local ledger', () async {
     final storage = MemoryStorage()..cursor = 4;
     final donationService = MemoryDonationService(storage);
     donationService.current = const AppSettings().copyWith(
@@ -363,10 +374,47 @@ void main() {
       adapter: adapter,
     );
 
+    final local = SvagaPlusHistoryEntry(
+      event: SvagaPlusSubscriptionEvent(
+        id: 'local',
+        cursor: 2,
+        eventType: 'new_subscription',
+        subscriberName: 'Local',
+        createdAt: DateTime.utc(2026, 7, 20),
+      ),
+      appliedSeconds: 900,
+      status: SvagaPlusHistoryStatus.applied,
+      appliedAt: DateTime.utc(2026, 7, 20),
+    );
+    final reverted = SvagaPlusHistoryEntry(
+      event: SvagaPlusSubscriptionEvent(
+        id: 'reverted',
+        cursor: 1,
+        eventType: 'renewed_subscription',
+        subscriberName: 'Reverted',
+        createdAt: DateTime.utc(2026, 7, 19),
+      ),
+      appliedSeconds: 900,
+      status: SvagaPlusHistoryStatus.reverted,
+      appliedAt: DateTime.utc(2026, 7, 19),
+      revertedAt: DateTime.utc(2026, 7, 20),
+    );
+    storage.history[local.event.id] = local.toJson();
+    storage.history[reverted.event.id] = reverted.toJson();
+
     await provider.init();
     await provider.syncHistory();
 
-    expect(provider.history.map((item) => item.event.id), ['new']);
+    expect(provider.history.map((item) => item.event.id), [
+      'local',
+      'reverted',
+    ]);
+    expect(provider.history.map((item) => item.status), [
+      SvagaPlusHistoryStatus.applied,
+      SvagaPlusHistoryStatus.reverted,
+    ]);
+    expect(storage.history.containsKey('new'), isFalse);
+    expect(api.getHistoryCalls, 0);
     provider.dispose();
   });
 
@@ -400,6 +448,38 @@ void main() {
     expect(opened, isNotEmpty);
     expect(credentials.value?.deviceId, 'device-1');
     expect(provider.hasCredentials, isTrue);
+    expect(storage.cursor, 4);
+    expect(provider.baselineCursor, 4);
+    expect(adapter.starts, 0);
+    provider.dispose();
+  });
+
+  test('pairing refuses credentials without an initial cursor', () async {
+    final storage = MemoryStorage();
+    final donationService = MemoryDonationService(storage);
+    final credentials = MemoryCredentials();
+    final api = MemoryApi()..pairingInitialCursor = null;
+    final adapter = MemoryAdapter(
+      api,
+      const SvagaPlusCredentials(deviceId: 'unused', token: 'unused'),
+      storage.cursor,
+    );
+    final provider = makeProvider(
+      storage: storage,
+      donationService: donationService,
+      api: api,
+      credentials: credentials,
+      adapter: adapter,
+    )..openUrl = (_) async => true;
+
+    await provider.init();
+
+    await expectLater(
+      provider.startPairing(),
+      throwsA(isA<SvagaPlusProtocolException>()),
+    );
+    expect(credentials.value, isNull);
+    expect(adapter.starts, 0);
     provider.dispose();
   });
 

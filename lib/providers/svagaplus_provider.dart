@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/svagaplus_history_entry.dart';
-import '../models/svagaplus_subscription_event.dart';
 import '../services/donation_service.dart';
 import '../services/storage_service.dart';
 import '../services/svagaplus_adapter.dart';
@@ -161,7 +160,7 @@ class SvagaPlusProvider extends ChangeNotifier {
         ? await api.getHead(_credentials!)
         : await headLoader!.call(_credentials!);
     final head = loadedHead ?? storage.loadSvagaCursor();
-    await storage.setSvagaCursor(head);
+    await storage.replaceSvagaCursor(head);
     _baselineCursor = head;
     _settings = _settings.copyWith(enabled: true);
     await _saveSettings();
@@ -183,46 +182,14 @@ class SvagaPlusProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> connect() async {
-    if (_credentials == null) return;
-    _settings = _settings.copyWith(enabled: true);
-    await _saveSettings();
-    _startAdapter();
-    notifyListeners();
-  }
+  Future<void> connect() => enable();
 
   Future<void> syncHistory() async {
-    if (_credentials == null || !_settings.enabled || _historySyncing) return;
+    if (_historySyncing) return;
     _historySyncing = true;
     _historyError = null;
     notifyListeners();
     try {
-      final known = <String>{for (final item in _history) item.event.id};
-      final baseline = _baselineCursor;
-      int? before;
-      while (true) {
-        final page = await api.getHistory(_credentials!, before: before);
-        if (page.events.isEmpty) break;
-        for (final event in page.events) {
-          if (event.cursor <= baseline || known.contains(event.id)) continue;
-          final seconds = event.eventType == SvagaPlusEventType.newSubscription
-              ? _settings.newSubscriptionSeconds
-              : _settings.renewedSubscriptionSeconds;
-          final entry = SvagaPlusHistoryEntry(
-            event: event,
-            appliedSeconds: seconds,
-            status: SvagaPlusHistoryStatus.applied,
-            appliedAt: event.createdAt,
-          );
-          await storage.saveSvagaHistoryEntry(entry.toJson());
-          _history.add(entry);
-          known.add(event.id);
-        }
-        if (!page.hasMore) break;
-        final nextBefore = page.events.first.cursor;
-        if (nextBefore <= baseline || nextBefore == before) break;
-        before = nextBefore;
-      }
       _history.clear();
       for (final raw in storage.loadSvagaHistory().values) {
         if (raw is Map) {
@@ -278,8 +245,13 @@ class SvagaPlusProvider extends ChangeNotifier {
       if (poll.pending || poll.credentials == null) {
         throw const SvagaPlusHttpException(410);
       }
+      if (poll.initialCursor == null) {
+        throw const SvagaPlusProtocolException('Missing initial_cursor');
+      }
       await api.completePairing(pairing.pairingId, poll.credentials!);
       final paired = poll.credentials!;
+      await storage.replaceSvagaCursor(poll.initialCursor!);
+      _baselineCursor = poll.initialCursor!;
       await credentialStore.save(paired);
       _credentials = paired;
       _settings = _settings.copyWith(enabled: false, deviceId: paired.deviceId);

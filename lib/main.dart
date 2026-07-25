@@ -132,6 +132,7 @@ void main() async {
         svagaCredentials ?? const SvagaPlusCredentials(deviceId: '', token: ''),
     lastCursor: storageService.loadSvagaCursor(),
     appVersion: SvagaPlusProvider.appVersion,
+    cursorLoader: storageService.loadSvagaCursor,
   );
   final svagaProvider = SvagaPlusProvider(
     storage: storageService,
@@ -145,6 +146,7 @@ void main() async {
       credentials: credentials,
       lastCursor: cursor,
       appVersion: SvagaPlusProvider.appVersion,
+      cursorLoader: storageService.loadSvagaCursor,
     ),
   );
   await svagaProvider.init(autoConnect: false);

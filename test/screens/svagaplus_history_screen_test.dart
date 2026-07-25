@@ -117,7 +117,9 @@ SvagaPlusProvider makeHistoryProvider(
   CountingTimerProvider timer,
   List<SvagaPlusHistoryEntry> history,
 ) {
-  final storage = HistoryStorage({});
+  final storage = HistoryStorage({
+    for (final entry in history) entry.event.id: entry.toJson(),
+  });
   final donation = HistoryDonationService(storage);
   return SvagaPlusProvider(
     storage: storage,
