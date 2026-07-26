@@ -54,3 +54,6 @@ logs.txt
 # ── Installer and large binaries ──────────────────────────────────────────────
 installer/
 *.exe
+
+# SDD / brainstorm scratch (local only)
+.superpowers/

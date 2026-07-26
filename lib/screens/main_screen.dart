@@ -7,9 +7,12 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../providers/timer_provider.dart';
 import '../providers/localization_provider.dart';
 import '../providers/theme_provider.dart';
+import '../providers/svagaplus_provider.dart';
 import '../services/donation_service.dart';
+import '../services/donation_feed.dart';
 import '../services/web_server_service.dart';
-import '../models/donation_record.dart';
+import '../models/svagaplus_history_entry.dart';
+import '../widgets/donation_feed_list.dart';
 import 'settings_screen.dart';
 import 'style_generator_screen.dart';
 
@@ -911,6 +914,12 @@ class _MainScreenState extends State<MainScreen> {
     LocalizationProvider localization,
   ) {
     final stats = donationService.statistics;
+    final svaga = context.watch<SvagaPlusProvider?>();
+    final feed = buildFeed(
+      stats.recentDonations,
+      svaga?.history ?? const <SvagaPlusHistoryEntry>[],
+      limit: 10,
+    );
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -921,23 +930,10 @@ class _MainScreenState extends State<MainScreen> {
             label: localization.tr('recent_donations'),
             child: SizedBox(
               height: 200,
-              child: stats.recentDonations.isEmpty
-                  ? Center(
-                      child: Text(
-                        localization.tr('no_donations'),
-                        style: const TextStyle(
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: stats.recentDonations.take(10).length,
-                      itemBuilder: (context, index) {
-                        final donation = stats.recentDonations[index];
-                        return _buildDonationItem(donation);
-                      },
-                    ),
+              child: DonationFeedList(
+                entries: feed,
+                localization: localization,
+              ),
             ),
           ),
         ),
@@ -975,28 +971,6 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ),
       ],
-    );
-  }
-
-  /// Builds a single donation item in the list.
-  Widget _buildDonationItem(DonationRecord donation) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              donation.username,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Text(
-            '+${donation.minutesAdded} min',
-            style: const TextStyle(color: Colors.green),
-          ),
-        ],
-      ),
     );
   }
 

@@ -203,6 +203,21 @@ class StorageService {
     });
   }
 
+  /// Очищает историю событий SVAGA+, сохраняя курсор.
+  ///
+  /// Курсор — отметка, до какого события таймер уже отчитался серверу.
+  /// Сбросить его вместе с историей значит заставить адаптер заново
+  /// вытянуть старые события и начислить время повторно.
+  Future<void> clearSvagaHistory() async {
+    await _mutate<void>((snapshot) {
+      final svaga = snapshot['svagaplus'];
+      if (svaga is! Map) return;
+      final next = Map<String, dynamic>.from(svaga);
+      next.remove('history');
+      snapshot['svagaplus'] = next;
+    });
+  }
+
   int loadSvagaCursor() {
     final svaga = _data['svagaplus'];
     return svaga is Map ? (svaga['last_cursor'] as num?)?.toInt() ?? 0 : 0;

@@ -37,6 +37,39 @@ void main() {
     expect(jsonDecode(request.body), {'device_name': 'Streaming PC'});
   });
 
+  test('startPairing sends device metadata', () async {
+    late http.Request request;
+    final client = SvagaPlusApiClient(
+      baseUri: Uri.parse('https://example.test'),
+      client: MockClient((value) async {
+        request = value;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'pairing_id': 'p-1',
+              'user_code': '1234-5678',
+              'pairing_secret': 'secret',
+              'expires_at': '2026-07-26T12:10:00Z',
+            },
+          }),
+          201,
+        );
+      }),
+    );
+
+    await client.startPairing(
+      deviceName: 'Donaton Timer · NEKIT-PC',
+      platform: 'Windows',
+      appVersion: '3.0.6',
+    );
+
+    final sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+    expect(sentBody['device_name'], 'Donaton Timer · NEKIT-PC');
+    expect(sentBody['platform'], 'Windows');
+    expect(sentBody['app_version'], '3.0.6');
+  });
+
   test('device endpoints use TimerDevice authorization', () async {
     late http.Request request;
     final client = SvagaPlusApiClient(
