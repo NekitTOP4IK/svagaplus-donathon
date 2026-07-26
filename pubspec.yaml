@@ -44,7 +44,7 @@ dependencies:
   window_manager: ^0.4.3
 
   # Audio
-  audioplayers: ^6.1.0
+  audioplayers: ^6.8.1
 
   # Utilities
   intl: ^0.20.2

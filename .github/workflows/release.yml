@@ -15,9 +15,14 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Test, build, and publish Windows release
+  validate:
+    name: Validate release
     runs-on: windows-latest
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
+      release_version: ${{ steps.release.outputs.version }}
+      release_branch: ${{ steps.release.outputs.branch }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
 
     steps:
       - name: Check out source
@@ -26,6 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Validate release version and source branch
+        id: release
         shell: pwsh
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -62,10 +68,19 @@ jobs:
             $branch = $branches[0]
           }
 
-          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "RELEASE_BRANCH=$branch" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "PRERELEASE=$($branch -eq 'dev').ToString().ToLowerInvariant()" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "branch=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "prerelease=$($branch -eq 'dev').ToString().ToLowerInvariant()" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+  test:
+    name: Run Flutter tests
+    needs: validate
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -79,12 +94,55 @@ jobs:
       - name: Run Flutter tests
         run: flutter test
 
+  build:
+    name: Build Windows application
+    needs: test
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Fetch Flutter dependencies
+        run: flutter pub get
+
       - name: Build production Windows application
         shell: pwsh
         run: |
           flutter build windows --release `
             --dart-define=SVAGAPLUS_ENV=production `
             --dart-define=SVAGAPLUS_BASE_URL=https://svagaplus.com
+
+      - name: Upload Windows application
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: build/windows/x64/runner/Release
+          if-no-files-found: error
+
+  package:
+    name: Package release artifacts
+    needs: [validate, build]
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.release_version }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Download Windows application
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: build/windows/x64/runner/Release
 
       - name: Create portable archive
         shell: pwsh
@@ -109,12 +167,31 @@ jobs:
             throw "Inno Setup failed with exit code $LASTEXITCODE."
           }
 
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [validate, package]
+    runs-on: windows-latest
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          prerelease: ${{ env.PRERELEASE }}
+          tag_name: ${{ needs.validate.outputs.release_tag }}
+          prerelease: ${{ needs.validate.outputs.prerelease }}
           generate_release_notes: true
           files: |
-            release-assets/DonatonTimer_${{ env.RELEASE_TAG }}_Setup.exe
-            release-assets/DonatonTimer_${{ env.RELEASE_TAG }}_Portable.zip
+            release-assets/DonatonTimer_${{ needs.validate.outputs.release_tag }}_Setup.exe
+            release-assets/DonatonTimer_${{ needs.validate.outputs.release_tag }}_Portable.zip
