@@ -15,6 +15,7 @@ import '../services/log_manager.dart';
 import '../services/web_server_service.dart';
 import '../models/service_config.dart';
 import '../models/app_settings.dart';
+import '../widgets/svagaplus_pairing_panel.dart';
 
 /// Экран настроек с вкладками для сервисов, таймера и звуков.
 class SettingsScreen extends StatefulWidget {
@@ -1028,10 +1029,13 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
               ],
             ),
             const SizedBox(height: 12),
-            if (provider?.pairingInProgress == true)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(localization.tr('svagaplus_pairing_waiting')),
+            if (provider != null)
+              SvagaPlusPairingPanel(
+                session: provider.pairing,
+                localization: localization,
+                onCancel: provider.cancelPairing,
+                onRetry: () => provider.retryPairing(),
+                onOpen: (uri) => provider.openUrl(uri),
               ),
             Wrap(
               spacing: 8,
@@ -1042,20 +1046,7 @@ class _ServicesSettingsTabState extends State<ServicesSettingsTab> {
                   text: localization.tr('svagaplus_pair'),
                   onPressed: provider == null || provider.pairingInProgress
                       ? null
-                      : () async {
-                          try {
-                            await provider.startPairing();
-                          } catch (error) {
-                            if (context.mounted) {
-                              NesSnackbar.show(
-                                context,
-                                text:
-                                    '${localization.tr('svagaplus_pair_error')}: $error',
-                                type: NesSnackbarType.error,
-                              );
-                            }
-                          }
-                        },
+                      : () => provider.startPairing(),
                 ),
                 NesButton.text(
                   type: NesButtonType.normal,
@@ -1985,8 +1976,11 @@ class _DataSettingsTabState extends State<DataSettingsTab> {
 
     if (confirmed == true && context.mounted) {
       final donationService = context.read<DonationService?>();
+      final svaga = context.read<SvagaPlusProvider?>();
       donationService?.clearStatistics();
+      await svaga?.clearHistory();
 
+      if (!context.mounted) return;
       NesSnackbar.show(
         context,
         text: localization.tr('statistics_reset'),
@@ -2008,16 +2002,19 @@ class _DataSettingsTabState extends State<DataSettingsTab> {
     if (confirmed == true && context.mounted) {
       final donationService = context.read<DonationService?>();
       final timerProvider = context.read<TimerProvider?>();
+      final svaga = context.read<SvagaPlusProvider?>();
 
       // Reset to default settings
       if (donationService != null) {
         await donationService.updateSettings(const AppSettings());
         donationService.clearStatistics();
       }
+      await svaga?.clearHistory();
 
       // Reset timer
       timerProvider?.reset();
 
+      if (!context.mounted) return;
       NesSnackbar.show(
         context,
         text: localization.tr('all_reset'),

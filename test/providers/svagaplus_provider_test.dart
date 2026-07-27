@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:donaton_timer/models/svagaplus_subscription_event.dart';
 import 'package:donaton_timer/models/svagaplus_history_entry.dart';
+import 'package:donaton_timer/models/svagaplus_pairing_session.dart';
 import 'package:donaton_timer/models/app_settings.dart';
 import 'package:donaton_timer/models/service_config.dart';
 import 'package:donaton_timer/models/svagaplus_settings.dart';
@@ -40,6 +41,47 @@ class MemoryStorage extends StorageService {
     if (event is Map && event['id'] is String) {
       history[event['id'] as String] = entry;
     }
+  }
+
+  @override
+  Future<void> clearSvagaHistory() async {
+    history.clear();
+    // Cursor is intentionally left untouched, mirroring the real
+    // StorageService.clearSvagaHistory contract.
+  }
+
+  // Mirrors StorageService.applySvagaEvent's in-memory semantics without
+  // touching disk (the real implementation goes through path_provider,
+  // which throws MissingPluginException under flutter test).
+  @override
+  Future<SvagaPlusMutationResult> applySvagaEvent({
+    required SvagaPlusSubscriptionEvent event,
+    required int seconds,
+    required int currentDuration,
+  }) async {
+    final existing = history[event.id];
+    if (existing is Map) {
+      return SvagaPlusMutationResult(
+        changed: false,
+        duration: currentDuration,
+        appliedSeconds: (existing['appliedSeconds'] as num?)?.toInt() ?? 0,
+        status: existing['status'] as String? ?? 'applied',
+      );
+    }
+    history[event.id] = {
+      'event': event.toJson(),
+      'appliedSeconds': seconds,
+      'status': 'applied',
+      'appliedAt': DateTime.now().toUtc().toIso8601String(),
+      'revertedAt': null,
+    };
+    if (event.cursor > cursor) cursor = event.cursor;
+    return SvagaPlusMutationResult(
+      changed: true,
+      duration: currentDuration + seconds,
+      appliedSeconds: seconds,
+      status: 'applied',
+    );
   }
 }
 
@@ -91,6 +133,8 @@ class MemoryApi extends SvagaPlusApiClient {
   @override
   Future<SvagaPlusPairingStart> startPairing({
     String deviceName = 'Donaton Timer',
+    String? platform,
+    String? appVersion,
   }) async {
     return SvagaPlusPairingStart(
       pairingId: 'pairing-id',
@@ -418,6 +462,58 @@ void main() {
     provider.dispose();
   });
 
+  test(
+    'clearHistory empties provider.history and storage, and notifies listeners',
+    () async {
+      final storage = MemoryStorage()..cursor = 12;
+      final entry = SvagaPlusHistoryEntry(
+        event: SvagaPlusSubscriptionEvent(
+          id: 'kept-until-cleared',
+          cursor: 12,
+          eventType: 'new_subscription',
+          subscriberName: 'Alice',
+          createdAt: DateTime.utc(2026, 7, 20),
+        ),
+        appliedSeconds: 900,
+        status: SvagaPlusHistoryStatus.applied,
+        appliedAt: DateTime.utc(2026, 7, 20),
+      );
+      storage.history[entry.event.id] = entry.toJson();
+      final donationService = MemoryDonationService(storage);
+      final credentials = MemoryCredentials();
+      final api = MemoryApi();
+      final adapter = MemoryAdapter(
+        api,
+        const SvagaPlusCredentials(deviceId: 'unused', token: 'unused'),
+        storage.cursor,
+      );
+      final provider = makeProvider(
+        storage: storage,
+        donationService: donationService,
+        api: api,
+        credentials: credentials,
+        adapter: adapter,
+      );
+
+      await provider.init(autoConnect: false);
+      expect(provider.history, isNotEmpty);
+
+      var notified = false;
+      provider.addListener(() => notified = true);
+
+      await provider.clearHistory();
+
+      expect(provider.history, isEmpty);
+      expect(storage.history, isEmpty);
+      expect(notified, isTrue);
+      // The cursor is not this method's job — StorageService.clearSvagaHistory
+      // owns that guarantee — but a regression that routed clearHistory
+      // through a wipe-everything call would show up here too.
+      expect(storage.cursor, 12);
+      provider.dispose();
+    },
+  );
+
   test('pairing stores credentials before completing the connection', () async {
     final storage = MemoryStorage();
     final donationService = MemoryDonationService(storage);
@@ -474,10 +570,12 @@ void main() {
 
     await provider.init();
 
-    await expectLater(
-      provider.startPairing(),
-      throwsA(isA<SvagaPlusProtocolException>()),
-    );
+    // startPairing никогда не бросает (Task 6) — отсутствие initial_cursor
+    // становится типизированным провалом состояния, а не исключением.
+    await provider.startPairing();
+
+    expect(provider.pairing.state, SvagaPlusPairingState.failed);
+    expect(provider.pairing.failure, SvagaPlusPairingFailure.unknown);
     expect(credentials.value, isNull);
     expect(adapter.starts, 0);
     provider.dispose();
@@ -517,5 +615,141 @@ void main() {
     expect(credentials.cleared, isTrue);
     expect(provider.settings.enabled, isFalse);
     provider.dispose();
+  });
+
+  group('_listenToAdapter live event insertion', () {
+    // The event handler processes events through a chain of futures
+    // (processor -> timerProvider -> storage mutation queue), so a single
+    // microtask turn is not enough to observe the resulting history update.
+    Future<void> flushMicrotasks() async {
+      for (var i = 0; i < 5; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+    }
+
+    SvagaPlusSubscriptionEvent liveEvent(String id, int hour, int cursor) =>
+        SvagaPlusSubscriptionEvent(
+          id: id,
+          cursor: cursor,
+          eventType: 'new_subscription',
+          subscriberName: id,
+          createdAt: DateTime.utc(2026, 7, 20, hour),
+        );
+
+    Map<String, dynamic> seededHistory(String id, int hour, int cursor) {
+      final event = liveEvent(id, hour, cursor);
+      return SvagaPlusHistoryEntry(
+        event: event,
+        appliedSeconds: 900,
+        status: SvagaPlusHistoryStatus.applied,
+        appliedAt: event.createdAt,
+      ).toJson();
+    }
+
+    test(
+      'event older than the newest existing entry lands in the middle',
+      () async {
+        final storage = MemoryStorage()
+          ..history.addAll({
+            'a': seededHistory('a', 20, 1),
+            'c': seededHistory('c', 10, 1),
+          });
+        final donationService = MemoryDonationService(storage)
+          ..current = const AppSettings().copyWith(
+            svagaPlusSettings: const SvagaPlusSettings(enabled: true),
+          );
+        final credentials = MemoryCredentials(
+          const SvagaPlusCredentials(deviceId: 'device-1', token: 'token'),
+        );
+        final api = MemoryApi();
+        final adapter = MemoryAdapter(api, credentials.value!, storage.cursor);
+        final provider = makeProvider(
+          storage: storage,
+          donationService: donationService,
+          api: api,
+          credentials: credentials,
+          adapter: adapter,
+        );
+
+        await provider.init(autoConnect: false);
+        // Older than 'a' (hour 20) but newer than 'c' (hour 10).
+        adapter.eventController.add(liveEvent('b', 15, 2));
+        await flushMicrotasks();
+
+        expect(provider.history.map((e) => e.event.id).toList(), [
+          'a',
+          'b',
+          'c',
+        ]);
+        provider.dispose();
+      },
+    );
+
+    test(
+      'event colliding on createdAt is ordered by cursor, higher first',
+      () async {
+        final storage = MemoryStorage()
+          ..history.addAll({'x': seededHistory('x', 15, 3)});
+        final donationService = MemoryDonationService(storage)
+          ..current = const AppSettings().copyWith(
+            svagaPlusSettings: const SvagaPlusSettings(enabled: true),
+          );
+        final credentials = MemoryCredentials(
+          const SvagaPlusCredentials(deviceId: 'device-1', token: 'token'),
+        );
+        final api = MemoryApi();
+        final adapter = MemoryAdapter(api, credentials.value!, storage.cursor);
+        final provider = makeProvider(
+          storage: storage,
+          donationService: donationService,
+          api: api,
+          credentials: credentials,
+          adapter: adapter,
+        );
+
+        await provider.init(autoConnect: false);
+        // Same createdAt (hour 15) as 'x', but a higher cursor (7 > 3).
+        adapter.eventController.add(liveEvent('y', 15, 7));
+        await flushMicrotasks();
+
+        expect(provider.history.map((e) => e.event.id).toList(), ['y', 'x']);
+        provider.dispose();
+      },
+    );
+
+    test('newest event lands at index 0', () async {
+      final storage = MemoryStorage()
+        ..history.addAll({
+          'old': seededHistory('old', 10, 1),
+          'mid': seededHistory('mid', 15, 1),
+        });
+      final donationService = MemoryDonationService(storage)
+        ..current = const AppSettings().copyWith(
+          svagaPlusSettings: const SvagaPlusSettings(enabled: true),
+        );
+      final credentials = MemoryCredentials(
+        const SvagaPlusCredentials(deviceId: 'device-1', token: 'token'),
+      );
+      final api = MemoryApi();
+      final adapter = MemoryAdapter(api, credentials.value!, storage.cursor);
+      final provider = makeProvider(
+        storage: storage,
+        donationService: donationService,
+        api: api,
+        credentials: credentials,
+        adapter: adapter,
+      );
+
+      await provider.init(autoConnect: false);
+      adapter.eventController.add(liveEvent('new', 25, 5));
+      await flushMicrotasks();
+
+      expect(provider.history.map((e) => e.event.id).toList(), [
+        'new',
+        'mid',
+        'old',
+      ]);
+      provider.dispose();
+    });
   });
 }

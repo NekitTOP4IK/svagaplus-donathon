@@ -54,4 +54,55 @@ void main() {
       expect(reloaded.loadSvagaHistory(), isNotEmpty);
     },
   );
+
+  test(
+    'clearSvagaHistory empties history but preserves the cursor',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('svaga-storage-');
+      addTearDown(() => directory.delete(recursive: true));
+      final storage = StorageService(appDataDir: directory);
+      await storage.init();
+      final event = SvagaPlusSubscriptionEvent(
+        id: 'event-1',
+        cursor: 12,
+        eventType: 'new_subscription',
+        subscriberName: 'Alice',
+        createdAt: DateTime.utc(2026, 7, 20),
+      );
+      await storage.applySvagaEvent(
+        event: event,
+        seconds: 900,
+        currentDuration: 0,
+      );
+      expect(storage.loadSvagaHistory(), isNotEmpty);
+      expect(storage.loadSvagaCursor(), 12);
+
+      await storage.clearSvagaHistory();
+
+      expect(storage.loadSvagaHistory(), isEmpty);
+      expect(storage.loadSvagaCursor(), 12);
+
+      // Confirms the cursor was actually persisted to disk, not just held
+      // in memory on the same instance.
+      final reloaded = StorageService(appDataDir: directory);
+      await reloaded.init();
+      expect(reloaded.loadSvagaHistory(), isEmpty);
+      expect(reloaded.loadSvagaCursor(), 12);
+    },
+  );
+
+  test(
+    'clearSvagaHistory on storage with no svagaplus key does not throw',
+    () async {
+      final directory = await Directory.systemTemp.createTemp('svaga-storage-');
+      addTearDown(() => directory.delete(recursive: true));
+      final storage = StorageService(appDataDir: directory);
+      await storage.init();
+
+      await storage.clearSvagaHistory();
+
+      expect(storage.loadSvagaHistory(), isEmpty);
+      expect(storage.loadSvagaCursor(), 0);
+    },
+  );
 }

@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:collection';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/svagaplus_history_entry.dart';
+import '../models/svagaplus_pairing_session.dart';
+import '../services/device_identity.dart';
 import '../services/donation_service.dart';
 import '../services/storage_service.dart';
 import '../services/svagaplus_adapter.dart';
@@ -39,7 +44,8 @@ class SvagaPlusProvider extends ChangeNotifier {
   bool _initialized = false;
   bool _historySyncing = false;
   Object? _historyError;
-  bool _pairingInProgress = false;
+  SvagaPlusPairingSession _pairing = SvagaPlusPairingSession.idle;
+  bool _cancelRequested = false;
 
   Future<bool> Function(Uri uri) openUrl = (_) async => false;
 
@@ -54,7 +60,8 @@ class SvagaPlusProvider extends ChangeNotifier {
     this.headLoader,
     List<SvagaPlusHistoryEntry>? initialHistory,
   }) : _adapter = adapter,
-       _history = List<SvagaPlusHistoryEntry>.from(initialHistory ?? const []),
+       _history = List<SvagaPlusHistoryEntry>.from(initialHistory ?? const [])
+         ..sort(_compareDesc),
        _settings = donationService.settings.svagaPlusSettings,
        _status = adapter.status;
 
@@ -64,13 +71,16 @@ class SvagaPlusProvider extends ChangeNotifier {
   SvagaPlusCredentials? get credentials => _credentials;
   bool get hasCredentials => _credentials != null;
   int get baselineCursor => _baselineCursor;
+
+  /// Свежее сверху. Живой вид над внутренним списком — не копия: не
+  /// сохраняйте результат в поле и не переносите через `await`, иначе
+  /// последующие мутации истории будут видны через него.
   List<SvagaPlusHistoryEntry> get history =>
-      List<SvagaPlusHistoryEntry>.unmodifiable(
-        _history..sort((a, b) => b.event.cursor.compareTo(a.event.cursor)),
-      );
+      UnmodifiableListView<SvagaPlusHistoryEntry>(_history);
   bool get historySyncing => _historySyncing;
   Object? get historyError => _historyError;
-  bool get pairingInProgress => _pairingInProgress;
+  SvagaPlusPairingSession get pairing => _pairing;
+  bool get pairingInProgress => _pairing.inProgress;
 
   Future<void> init({bool autoConnect = true}) async {
     if (_initialized) return;
@@ -87,6 +97,7 @@ class SvagaPlusProvider extends ChangeNotifier {
         }
       }
     }
+    _history.sort(_compareDesc);
     _baselineCursor = storage.loadSvagaCursor();
     final saved = donationService.settings;
     _settings = saved.svagaPlusSettings;
@@ -128,7 +139,7 @@ class SvagaPlusProvider extends ChangeNotifier {
           final raw = storage.loadSvagaHistory()[event.id];
           if (raw is Map) {
             _history.removeWhere((item) => item.event.id == event.id);
-            _history.add(
+            _insertSorted(
               SvagaPlusHistoryEntry.fromJson(Map<String, dynamic>.from(raw)),
             );
             notifyListeners();
@@ -136,6 +147,26 @@ class SvagaPlusProvider extends ChangeNotifier {
         }
       } catch (_) {}
     });
+  }
+
+  /// Порядок ленты и экрана истории: свежее сверху.
+  /// Ключ — время события, курсор разрешает совпадения.
+  static int _compareDesc(
+    SvagaPlusHistoryEntry a,
+    SvagaPlusHistoryEntry b,
+  ) {
+    final byTime = b.event.createdAt.compareTo(a.event.createdAt);
+    return byTime != 0 ? byTime : b.event.cursor.compareTo(a.event.cursor);
+  }
+
+  /// Вставляет запись, сохраняя порядок, без полной пересортировки.
+  void _insertSorted(SvagaPlusHistoryEntry entry) {
+    var index = 0;
+    while (index < _history.length &&
+        _compareDesc(_history[index], entry) < 0) {
+      index++;
+    }
+    _history.insert(index, entry);
   }
 
   void _startAdapter() => _adapter.start();
@@ -200,6 +231,7 @@ class SvagaPlusProvider extends ChangeNotifier {
           } catch (_) {}
         }
       }
+      _history.sort(_compareDesc);
     } catch (error) {
       _historyError = error;
     } finally {
@@ -219,48 +251,185 @@ class SvagaPlusProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> startPairing({String deviceName = 'Donaton Timer'}) async {
-    if (_pairingInProgress) return;
-    _pairingInProgress = true;
+  /// Сколько подряд сетевых неудач терпим, прежде чем сдаться.
+  static const maxPairingNetworkRetries = 6;
+
+  /// Шаг, которым нарезано ожидание, чтобы отмена откликалась быстро.
+  static const pairingCancelSlice = Duration(milliseconds: 250);
+
+  void _setPairing(SvagaPlusPairingSession value) {
+    _pairing = value;
     notifyListeners();
+  }
+
+  /// Просит цикл остановиться. Отклик — в пределах [pairingCancelSlice].
+  void cancelPairing() {
+    if (!_pairing.inProgress) return;
+    _cancelRequested = true;
+  }
+
+  Future<void> retryPairing({String? deviceName}) =>
+      startPairing(deviceName: deviceName);
+
+  /// Привязывает устройство. Не бросает: любая ошибка становится
+  /// состоянием [SvagaPlusPairingState.failed] с типизированной причиной.
+  Future<void> startPairing({String? deviceName}) async {
+    if (_pairing.inProgress) return;
+    _cancelRequested = false;
+    _setPairing(
+      const SvagaPlusPairingSession(state: SvagaPlusPairingState.starting),
+    );
+
+    final SvagaPlusPairingStart started;
     try {
-      final pairing = await api.startPairing(deviceName: deviceName);
-      final uri =
-          Uri.tryParse(pairing.verificationUri ?? '') ??
-          Uri.parse('${api.baseUri}/timer/connect?code=${pairing.userCode}');
-      final opened = await openUrl(uri);
-      if (!opened) {
-        throw StateError('Не удалось открыть ссылку сопряжения в браузере');
-      }
-      SvagaPlusPairingPoll poll = const SvagaPlusPairingPoll(pending: true);
-      while (poll.pending &&
-          DateTime.now().toUtc().isBefore(pairing.expiresAt)) {
-        poll = await api.pollPairing(pairing.pairingId, pairing.pairingSecret);
-        if (poll.pending) {
-          await Future<void>.delayed(
-            Duration(seconds: poll.interval.clamp(1, 30)),
-          );
-        }
-      }
-      if (poll.pending || poll.credentials == null) {
-        throw const SvagaPlusHttpException(410);
-      }
-      if (poll.initialCursor == null) {
-        throw const SvagaPlusProtocolException('Missing initial_cursor');
-      }
-      await api.completePairing(pairing.pairingId, poll.credentials!);
-      final paired = poll.credentials!;
-      await storage.replaceSvagaCursor(poll.initialCursor!);
-      _baselineCursor = poll.initialCursor!;
-      await credentialStore.save(paired);
-      _credentials = paired;
-      _settings = _settings.copyWith(enabled: false, deviceId: paired.deviceId);
-      await _saveSettings();
-      await _replaceAdapter();
-    } finally {
-      _pairingInProgress = false;
-      notifyListeners();
+      started = await api.startPairing(
+        deviceName: deviceName ?? defaultDeviceName(),
+        platform: currentPlatformName(),
+        appVersion: appVersion,
+      );
+    } catch (error) {
+      _setPairing(
+        SvagaPlusPairingSession(
+          state: SvagaPlusPairingState.failed,
+          failure: _classifyPairingError(error),
+        ),
+      );
+      return;
     }
+
+    final uri =
+        Uri.tryParse(started.verificationUri ?? '') ??
+        Uri.parse('${api.baseUri}/timer/connect?code=${started.userCode}');
+
+    bool opened;
+    try {
+      opened = await openUrl(uri);
+    } catch (_) {
+      opened = false;
+    }
+
+    _setPairing(
+      SvagaPlusPairingSession(
+        state: SvagaPlusPairingState.awaiting,
+        userCode: started.userCode,
+        verificationUri: uri,
+        expiresAt: started.expiresAt,
+        browserOpened: opened,
+      ),
+    );
+
+    await _pollUntilPaired(started);
+  }
+
+  Future<void> _pollUntilPaired(SvagaPlusPairingStart started) async {
+    var failures = 0;
+
+    while (true) {
+      if (_cancelRequested) {
+        _setPairing(
+          _pairing.copyWith(state: SvagaPlusPairingState.cancelled),
+        );
+        return;
+      }
+      if (!DateTime.now().toUtc().isBefore(started.expiresAt)) {
+        _failPairing(SvagaPlusPairingFailure.expired);
+        return;
+      }
+
+      final SvagaPlusPairingPoll poll;
+      try {
+        poll = await api.pollPairing(started.pairingId, started.pairingSecret);
+      } catch (error) {
+        final failure = _classifyPairingError(error);
+        if (failure != SvagaPlusPairingFailure.network) {
+          _failPairing(failure);
+          return;
+        }
+        failures++;
+        if (failures >= maxPairingNetworkRetries) {
+          _failPairing(SvagaPlusPairingFailure.network);
+          return;
+        }
+        await _sleepInSlices(
+          Duration(seconds: (1 << (failures - 1)).clamp(1, 30)),
+        );
+        continue;
+      }
+
+      failures = 0;
+      if (!poll.pending) {
+        await _finishPairing(started, poll);
+        return;
+      }
+      await _sleepInSlices(Duration(seconds: poll.interval.clamp(1, 30)));
+    }
+  }
+
+  Future<void> _finishPairing(
+    SvagaPlusPairingStart started,
+    SvagaPlusPairingPoll poll,
+  ) async {
+    if (poll.credentials == null || poll.initialCursor == null) {
+      _failPairing(SvagaPlusPairingFailure.unknown);
+      return;
+    }
+    _setPairing(_pairing.copyWith(state: SvagaPlusPairingState.completing));
+
+    try {
+      await api.completePairing(started.pairingId, poll.credentials!);
+    } catch (error) {
+      _failPairing(_classifyPairingError(error));
+      return;
+    }
+
+    final paired = poll.credentials!;
+    await storage.replaceSvagaCursor(poll.initialCursor!);
+    _baselineCursor = poll.initialCursor!;
+    await credentialStore.save(paired);
+    _credentials = paired;
+    _settings = _settings.copyWith(enabled: true, deviceId: paired.deviceId);
+    await _saveSettings();
+    await _replaceAdapter();
+    _startAdapter();
+    _setPairing(
+      const SvagaPlusPairingSession(state: SvagaPlusPairingState.done),
+    );
+  }
+
+  void _failPairing(SvagaPlusPairingFailure failure) => _setPairing(
+    _pairing.copyWith(state: SvagaPlusPairingState.failed, failure: failure),
+  );
+
+  /// Ожидание, нарезанное на отрезки, чтобы отмена не ждала весь интервал.
+  Future<void> _sleepInSlices(Duration total) async {
+    var remaining = total;
+    while (remaining > Duration.zero && !_cancelRequested) {
+      final slice = remaining < pairingCancelSlice
+          ? remaining
+          : pairingCancelSlice;
+      await Future<void>.delayed(slice);
+      remaining -= slice;
+    }
+  }
+
+  SvagaPlusPairingFailure _classifyPairingError(Object error) {
+    if (error is SvagaPlusAuthorizationException) {
+      return SvagaPlusPairingFailure.unauthorized;
+    }
+    if (error is SvagaPlusHttpException) {
+      final code = error.statusCode;
+      if (code == 429) return SvagaPlusPairingFailure.rateLimited;
+      if (code == 410) return SvagaPlusPairingFailure.expired;
+      if (code == 400) return SvagaPlusPairingFailure.invalidSecret;
+      if (code >= 500) return SvagaPlusPairingFailure.network;
+      return SvagaPlusPairingFailure.unknown;
+    }
+    if (error is TimeoutException ||
+        error is SocketException ||
+        error is http.ClientException) {
+      return SvagaPlusPairingFailure.network;
+    }
+    return SvagaPlusPairingFailure.unknown;
   }
 
   Future<void> _handleAuthorizationRequired() async {
@@ -285,6 +454,14 @@ class SvagaPlusProvider extends ChangeNotifier {
       appliedAt: old.appliedAt,
       revertedAt: DateTime.now().toUtc(),
     );
+    notifyListeners();
+  }
+
+  /// Очищает историю подписок — и в памяти, и в хранилище.
+  /// Курсор сохраняется, см. [StorageService.clearSvagaHistory].
+  Future<void> clearHistory() async {
+    _history.clear();
+    await storage.clearSvagaHistory();
     notifyListeners();
   }
 

@@ -119,12 +119,18 @@ class SvagaPlusApiClient {
 
   Future<SvagaPlusPairingStart> startPairing({
     String deviceName = 'Donaton Timer',
+    String? platform,
+    String? appVersion,
   }) async {
     final response = await _request(
       () => client.post(
         _endpoint('/api/timer/pairing/start'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'device_name': deviceName}),
+        body: jsonEncode({
+          'device_name': deviceName,
+          'platform': ?platform,
+          'app_version': ?appVersion,
+        }),
       ),
     );
     final data = _data(response);
